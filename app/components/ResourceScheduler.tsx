@@ -72,6 +72,8 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
   const [error, setError] = useState<string | null>(null);
   const [hiddenResources, setHiddenResources] = useState<Set<string>>(new Set());
   const [pendingBookings, setPendingBookings] = useState<PendingEntry[]>([]);
+  const [overlapError, setOverlapError] = useState<string | null>(null);
+  const allEventsRef = useRef<Array<{ resourceId: string; start: string; end: string }>>([]);
   const [selectedEvent, setSelectedEvent] = useState<{
     eventId: string;
     calendarId: string;
@@ -152,6 +154,24 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
     try { localStorage.setItem("nlec_schedule_date", date); } catch {}
     fetchData(date);
   }, [date, fetchData]);
+
+  // Keep a fast-access ref of all events for overlap checking during drag
+  useEffect(() => {
+    const gcal = (data.events as Array<{ resourceId: string; start: string; end: string }>);
+    const pending = pendingBookings
+      .filter((e) => e.status === "pending")
+      .map((e) => ({ resourceId: e.booking.calendarId, start: e.booking.start, end: e.booking.end }));
+    allEventsRef.current = [...gcal, ...pending];
+  }, [data.events, pendingBookings]);
+
+  const checkOverlap = useCallback((resourceId: string, start: Date, end: Date) => {
+    return allEventsRef.current.some((ev) => {
+      if (ev.resourceId !== resourceId) return false;
+      const evStart = new Date(ev.start);
+      const evEnd = new Date(ev.end);
+      return start < evEnd && evStart < end;
+    });
+  }, []);
 
   const navigate = (direction: "prev" | "next") => {
     const d = new Date(date + "T00:00:00");
@@ -558,6 +578,12 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
 
         {/* Calendar area */}
         <div className="flex-1 overflow-hidden relative bg-white" style={{ opacity: isPast ? 0.55 : 1, transition: "opacity 0.3s" }}>
+          {overlapError && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium text-white flex items-center gap-2"
+              style={{ background: "#dc2626", maxWidth: "90%" }}>
+              <span>⚠</span> {overlapError}
+            </div>
+          )}
           {loading && (
             <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-20">
               <div className="flex items-center gap-2" style={{ color: BRAND.tealDark }}>
@@ -619,10 +645,19 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
             slotLabelClassNames="text-xs"
             selectable={canBook}
             selectMirror={canBook}
-            selectAllow={(span) => canBook && span.start >= new Date()}
+            selectAllow={(span) => {
+              if (!canBook || span.start < new Date()) return false;
+              if (!span.resource) return true;
+              return !checkOverlap(span.resource.id, span.start, span.end);
+            }}
             select={(info) => {
               const resource = info.resource;
               if (!resource) return;
+              if (checkOverlap(resource.id, info.start, info.end)) {
+                setOverlapError("This time slot overlaps with an existing booking. Please choose a different time.");
+                setTimeout(() => setOverlapError(null), 4000);
+                return;
+              }
               setBookingTitle("");
               setBookingDesc("");
               setBookingError(null);
@@ -749,12 +784,19 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
                       onChange={(e) => setGuestEmail(e.target.value)}
                       placeholder="your@email.com"
                       className="w-full border rounded-lg px-3 py-2 text-sm outline-none"
-                      style={{ borderColor: BRAND.teal, color: BRAND.navy, fontFamily: "inherit" }}
+                      style={{
+                        borderColor: guestEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim()) ? "#dc2626" : BRAND.teal,
+                        color: BRAND.navy,
+                        fontFamily: "inherit",
+                      }}
                     />
+                    {guestEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim()) && (
+                      <p className="text-xs text-red-500 mt-1">Please enter a valid email address.</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-semibold mb-1" style={{ color: BRAND.tealDark }}>
-                      Contact Number <span className="opacity-50">(optional)</span>
+                      Contact Number <span className="text-red-400">*</span>
                     </label>
                     <input
                       type="tel"
@@ -780,7 +822,13 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
                   </button>
                   <button
                     onClick={submitGuestRequest}
-                    disabled={bookingSubmitting || !guestName.trim() || !guestEmail.trim()}
+                    disabled={
+                      bookingSubmitting ||
+                      !guestName.trim() ||
+                      !guestEmail.trim() ||
+                      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim()) ||
+                      !guestPhone.trim()
+                    }
                     className="px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
                     style={{ background: BRAND.tealDark, fontFamily: "inherit" }}
                   >

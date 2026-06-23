@@ -75,6 +75,11 @@ export default function AdminClient() {
   const [rejectReason, setRejectReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [removeLoading, setRemoveLoading] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkRemoving, setBulkRemoving] = useState(false);
 
   const goToSchedule = (isoStart: string) => {
     const d = new Date(isoStart);
@@ -137,6 +142,42 @@ export default function AdminClient() {
     }
   };
 
+  const removeBooking = async (id: string) => {
+    setRemoveLoading(true);
+    setRemoveError(null);
+    try {
+      const res = await fetch(`/api/bookings?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setRemovingId(null);
+      fetchBookings();
+    } catch (e) {
+      setRemoveError(e instanceof Error ? e.message : "Failed to remove");
+    } finally {
+      setRemoveLoading(false);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const bulkRemove = async () => {
+    setBulkRemoving(true);
+    await Promise.all(
+      [...selected].map(id =>
+        fetch(`/api/bookings?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+      )
+    );
+    setSelected(new Set());
+    setBulkRemoving(false);
+    fetchBookings();
+  };
+
   const pending  = bookings.filter(b => b.status === "pending").length;
   const approved = bookings.filter(b => b.status === "approved").length;
   const rejected = bookings.filter(b => b.status === "rejected").length;
@@ -149,6 +190,8 @@ export default function AdminClient() {
   ];
 
   const filtered = filter === "all" ? bookings : bookings.filter(b => b.status === filter);
+  const selectableFiltered = filtered.filter(b => b.status !== "pending");
+  const allSelected = selectableFiltered.length > 0 && selectableFiltered.every(b => selected.has(b.id));
 
   return (
     <div
@@ -208,6 +251,42 @@ export default function AdminClient() {
         </button>
       </div>
 
+      {/* Bulk action bar — shown when non-pending entries are visible */}
+      {selectableFiltered.length > 0 && (
+        <div className="px-6 pb-3 flex items-center gap-3 max-w-2xl">
+          <label className="flex items-center gap-2 cursor-pointer text-sm" style={{ color: BRAND.grey }}>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={() => {
+                if (allSelected) {
+                  setSelected(prev => {
+                    const next = new Set(prev);
+                    selectableFiltered.forEach(b => next.delete(b.id));
+                    return next;
+                  });
+                } else {
+                  setSelected(prev => new Set([...prev, ...selectableFiltered.map(b => b.id)]));
+                }
+              }}
+              className="w-4 h-4 rounded"
+              style={{ accentColor: BRAND.tealDark }}
+            />
+            Select all
+          </label>
+          {selected.size > 0 && (
+            <button
+              onClick={bulkRemove}
+              disabled={bulkRemoving}
+              className="ml-auto px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60 transition-opacity hover:opacity-90"
+              style={{ background: "#dc2626" }}
+            >
+              {bulkRemoving ? "Removing…" : `Remove ${selected.size} selected`}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Cards */}
       <div className="px-6 pb-10">
         {loading ? (
@@ -234,11 +313,16 @@ export default function AdminClient() {
               };
               const sc = statusColors[entry.status];
 
+              const isSelected = selected.has(entry.id);
+
               return (
                 <div
                   key={entry.id}
                   className="bg-white rounded-xl shadow-sm overflow-hidden"
-                  style={{ border: `1px solid ${entry.status === "pending" ? "#fde68a" : "#e5e7eb"}` }}
+                  style={{
+                    border: `1px solid ${isSelected ? BRAND.teal : entry.status === "pending" ? "#fde68a" : "#e5e7eb"}`,
+                    boxShadow: isSelected ? `0 0 0 2px ${BRAND.teal}33` : undefined,
+                  }}
                 >
                   {/* Status bar */}
                   <div className="h-1.5" style={{ background: sc.bar }} />
@@ -246,7 +330,17 @@ export default function AdminClient() {
                   <div className="px-5 py-4">
                     {/* Top row */}
                     <div className="flex items-start justify-between gap-4 mb-3">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex items-start gap-3">
+                        {entry.status !== "pending" && (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelect(entry.id)}
+                            className="mt-1 w-4 h-4 flex-shrink-0 cursor-pointer"
+                            style={{ accentColor: BRAND.tealDark }}
+                          />
+                        )}
+                        <div>
                         <span
                           className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full mb-1.5"
                           style={{ background: sc.bg, color: sc.text }}
@@ -259,6 +353,7 @@ export default function AdminClient() {
                         <p className="text-xs mt-0.5 font-medium" style={{ color: BRAND.tealDark }}>
                           {entry.booking.room}
                         </p>
+                        </div>
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="text-xs font-semibold" style={{ color: BRAND.navy }}>
@@ -314,13 +409,54 @@ export default function AdminClient() {
                           {entry.rejectReason ? ` — "${entry.rejectReason}"` : ""}
                         </p>
                       )}
-                      <button
-                        onClick={() => goToSchedule(entry.booking.start)}
-                        className="mt-2 text-xs font-medium transition-opacity hover:opacity-70"
-                        style={{ color: BRAND.tealDark }}
-                      >
-                        View in Schedule →
-                      </button>
+                      <div className="flex items-center justify-between mt-2">
+                        <button
+                          onClick={() => goToSchedule(entry.booking.start)}
+                          className="text-xs font-medium transition-opacity hover:opacity-70"
+                          style={{ color: BRAND.tealDark }}
+                        >
+                          View in Schedule →
+                        </button>
+                        {entry.status !== "pending" && removingId !== entry.id && (
+                          <button
+                            onClick={() => { setRemovingId(entry.id); setRemoveError(null); }}
+                            className="text-xs font-medium transition-opacity hover:opacity-70"
+                            style={{ color: "#dc2626" }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Remove confirmation */}
+                      {removingId === entry.id && (
+                        <div className="mt-3 rounded-lg p-3 border border-red-200 bg-red-50">
+                          <p className="text-xs font-semibold text-red-700 mb-2">
+                            Remove this record permanently?
+                          </p>
+                          {removeError && (
+                            <p className="text-xs text-red-600 mb-2">{removeError}</p>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => { setRemovingId(null); setRemoveError(null); }}
+                              disabled={removeLoading}
+                              className="flex-1 py-1.5 rounded text-xs font-medium border"
+                              style={{ borderColor: "#d1d5db", color: BRAND.grey }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => removeBooking(entry.id)}
+                              disabled={removeLoading}
+                              className="flex-1 py-1.5 rounded text-xs font-semibold text-white disabled:opacity-60"
+                              style={{ background: "#dc2626" }}
+                            >
+                              {removeLoading ? "Removing…" : "Confirm Remove"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Approve / Reject buttons */}

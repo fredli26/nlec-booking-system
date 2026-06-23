@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { google } from "googleapis";
+import nodemailer from "nodemailer";
 import fs from "fs";
 import path from "path";
 
@@ -15,6 +16,112 @@ function getAuth() {
 }
 
 const FILE = path.join(process.cwd(), "data", "pending-bookings.json");
+const ARCHIVE_FILE = path.join(process.cwd(), "data", "archived-bookings.json");
+const CONFIG_FILE = path.join(process.cwd(), "config.json");
+
+function readConfig(): { deleteRequestsOlderThanDays: number; adminEmails?: string[] } {
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+  } catch {
+    return { deleteRequestsOlderThanDays: 30 };
+  }
+}
+
+async function sendGuestApprovedEmail(entry: {
+  booking: { title: string; room: string; start: string; end: string; description?: string };
+  guest: { name: string; email: string; phone?: string };
+}) {
+  const { adminEmails } = readConfig();
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const smtpHost = process.env.SMTP_HOST ?? "smtp.gmail.com";
+  const smtpPort = parseInt(process.env.SMTP_PORT ?? "587");
+  if (!smtpUser || !smtpPass) return;
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpPort === 465,
+    auth: { user: smtpUser, pass: smtpPass },
+  });
+
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleString("en-AU", {
+      weekday: "short", day: "numeric", month: "short", year: "numeric",
+      hour: "numeric", minute: "2-digit", hour12: true,
+    });
+
+  const html = `
+    <h2 style="color:#088a97">Booking Confirmed</h2>
+    <p style="font-family:sans-serif;font-size:14px">Hi ${entry.guest.name},</p>
+    <p style="font-family:sans-serif;font-size:14px">Your booking request has been approved. Here are your confirmed details:</p>
+    <table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;margin-top:16px">
+      <tr><td style="padding:4px 12px 4px 0;color:#768081">Room</td><td><strong>${entry.booking.room}</strong></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#768081">Title</td><td>${entry.booking.title}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#768081">Start</td><td>${fmt(entry.booking.start)}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#768081">End</td><td>${fmt(entry.booking.end)}</td></tr>
+      ${entry.booking.description ? `<tr><td style="padding:4px 12px 4px 0;color:#768081">Description</td><td>${entry.booking.description}</td></tr>` : ""}
+    </table>
+    <p style="font-family:sans-serif;font-size:14px;margin-top:16px">We look forward to seeing you!</p>
+    <p style="color:#768081;font-size:12px;margin-top:24px">NLEC Room Booking System</p>
+  `;
+
+  await transporter.sendMail({
+    from: `"NLEC Booking" <${smtpUser}>`,
+    to: entry.guest.email,
+    bcc: (adminEmails ?? []).join(", "),
+    subject: `Booking Confirmed: ${entry.booking.room} — ${entry.booking.title}`,
+    html,
+  });
+}
+
+async function sendGuestReceiptEmail(entry: {
+  booking: { title: string; room: string; start: string; end: string; description?: string };
+  guest: { name: string; email: string; phone?: string };
+}) {
+  const { adminEmails } = readConfig();
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const smtpHost = process.env.SMTP_HOST ?? "smtp.gmail.com";
+  const smtpPort = parseInt(process.env.SMTP_PORT ?? "587");
+  if (!smtpUser || !smtpPass) return;
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpPort === 465,
+    auth: { user: smtpUser, pass: smtpPass },
+  });
+
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleString("en-AU", {
+      weekday: "short", day: "numeric", month: "short", year: "numeric",
+      hour: "numeric", minute: "2-digit", hour12: true,
+    });
+
+  const html = `
+    <h2 style="color:#088a97">Booking Request Received</h2>
+    <p style="font-family:sans-serif;font-size:14px">Hi ${entry.guest.name},</p>
+    <p style="font-family:sans-serif;font-size:14px">Your booking request has been received and is pending approval. We will notify you once it has been reviewed.</p>
+    <table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;margin-top:16px">
+      <tr><td style="padding:4px 12px 4px 0;color:#768081">Room</td><td><strong>${entry.booking.room}</strong></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#768081">Title</td><td>${entry.booking.title}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#768081">Start</td><td>${fmt(entry.booking.start)}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#768081">End</td><td>${fmt(entry.booking.end)}</td></tr>
+      ${entry.booking.description ? `<tr><td style="padding:4px 12px 4px 0;color:#768081">Description</td><td>${entry.booking.description}</td></tr>` : ""}
+    </table>
+    <p style="font-family:sans-serif;font-size:14px;margin-top:16px">If you have any questions, please contact us.</p>
+    <p style="color:#768081;font-size:12px;margin-top:24px">NLEC Room Booking System</p>
+  `;
+
+  await transporter.sendMail({
+    from: `"NLEC Booking" <${smtpUser}>`,
+    to: entry.guest.email,
+    bcc: (adminEmails ?? []).join(", "),
+    subject: `Booking Request Received: ${entry.booking.room} — ${entry.booking.title}`,
+    html,
+  });
+}
 
 function readBookings() {
   if (!fs.existsSync(FILE)) return [];
@@ -28,6 +135,32 @@ function readBookings() {
 function writeBookings(bookings: unknown[]) {
   fs.mkdirSync(path.dirname(FILE), { recursive: true });
   fs.writeFileSync(FILE, JSON.stringify(bookings, null, 2), "utf-8");
+}
+
+function readArchive() {
+  if (!fs.existsSync(ARCHIVE_FILE)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(ARCHIVE_FILE, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+function writeArchive(entries: unknown[]) {
+  fs.mkdirSync(path.dirname(ARCHIVE_FILE), { recursive: true });
+  fs.writeFileSync(ARCHIVE_FILE, JSON.stringify(entries, null, 2), "utf-8");
+}
+
+function pruneOldRequests() {
+  const { deleteRequestsOlderThanDays } = readConfig();
+  const cutoff = Date.now() - deleteRequestsOlderThanDays * 24 * 60 * 60 * 1000;
+  const bookings = readBookings();
+  const kept = bookings.filter((b: { status: string; approvedAt?: string; rejectedAt?: string; submittedAt: string }) => {
+    if (b.status === "pending") return true; // never auto-delete pending
+    const actionDate = b.approvedAt ?? b.rejectedAt ?? b.submittedAt;
+    return new Date(actionDate).getTime() > cutoff;
+  });
+  if (kept.length !== bookings.length) writeBookings(kept);
 }
 
 export async function POST(request: Request) {
@@ -53,11 +186,38 @@ export async function POST(request: Request) {
   bookings.push(entry);
   writeBookings(bookings);
 
+  // Send receipt email to guest (non-blocking)
+  sendGuestReceiptEmail(entry).catch((e) =>
+    console.error("Guest receipt email failed:", e)
+  );
+
   return NextResponse.json({ ok: true, id: entry.id });
 }
 
 export async function GET() {
+  pruneOldRequests();
   return NextResponse.json({ bookings: readBookings() });
+}
+
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  const bookings = readBookings();
+  const entry = bookings.find((b: { id: string }) => b.id === id);
+  if (!entry) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+  if (entry.status === "pending") {
+    return NextResponse.json({ error: "Cannot remove a pending request" }, { status: 400 });
+  }
+
+  // Move to archive instead of hard-deleting
+  const archive = readArchive();
+  archive.push({ ...entry, archivedAt: new Date().toISOString() });
+  writeArchive(archive);
+
+  writeBookings(bookings.filter((b: { id: string }) => b.id !== id));
+  return NextResponse.json({ ok: true });
 }
 
 export async function PATCH(request: Request) {
@@ -108,6 +268,10 @@ export async function PATCH(request: Request) {
         approvedAt: new Date().toISOString(),
         googleEventId: event.data.id,
       };
+      // Send confirmation email to guest (non-blocking)
+      sendGuestApprovedEmail(entry).catch((e) =>
+        console.error("Guest approval email failed:", e)
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create calendar event";
       return NextResponse.json({ error: message }, { status: 500 });

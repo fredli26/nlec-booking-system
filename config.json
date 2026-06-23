@@ -1,0 +1,4 @@
+{
+  "deleteRequestsOlderThanDays": 30,
+  "adminEmails": ["fred.li@nlec.org.au"]
+}
