@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/* NLEC Brand Colours */
+:root {
+  /* Primary */
+  --nlec-teal:      #66c6bb;
+  --nlec-teal-dark: #088a97;
+  --nlec-grey:      #768081;
+
+  /* Secondary */
+  --nlec-navy:      #003462;
+  --nlec-sky:       #71B9D8;
+  --nlec-terra:     #C28064;
+
+  /* UI tints */
+  --nlec-teal-light: #e8f7f6;
+  --nlec-teal-mid:   #b2e4df;
+
+  --background: #ffffff;
+  --foreground: #768081;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-montserrat), Montserrat, sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-montserrat), Montserrat, sans-serif;
+}
+
+/* FullCalendar brand overrides */
+.fc .fc-resource-timeline-divider {
+  background: var(--nlec-teal-light);
+}
+.fc .fc-col-header-cell {
+  background: var(--nlec-teal-dark);
+  color: white;
+}
+.fc .fc-timegrid-slot-label,
+.fc .fc-timeline-slot-label {
+  color: var(--nlec-grey);
+  font-size: 0.75rem;
+}
+.fc .fc-now-indicator-line {
+  border-color: var(--nlec-terra);
+}
+.fc .fc-now-indicator-arrow {
+  border-top-color: var(--nlec-terra);
+  border-bottom-color: var(--nlec-terra);
+}
+.fc-theme-standard td,
+.fc-theme-standard th {
+  border-color: #e5e7eb;
+}
+.fc .fc-resource-group-cell {
+  background: var(--nlec-teal-light);
+  color: var(--nlec-teal-dark);
+  font-weight: 600;
+}
