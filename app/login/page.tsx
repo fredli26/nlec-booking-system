@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 
 type Mode = "choose" | "sso" | "code";
 
@@ -14,9 +15,17 @@ export default function LoginPage() {
   const [codeError, setCodeError] = useState("");
   const [codeLoading, setCodeLoading] = useState(false);
 
-  // SSO state (layout only — logic TBD)
-  const [ssoEmail, setSsoEmail] = useState("");
-  const [ssoPassword, setSsoPassword] = useState("");
+  const [ssoLoading, setSsoLoading] = useState(false);
+  const [ssoError, setSsoError] = useState("");
+  const [ssoLocked, setSsoLocked] = useState(false); // true = was SSO user, must re-authenticate via SSO
+
+  useEffect(() => {
+    const hasSso = document.cookie.split("; ").some((c) => c.startsWith("nlec_sso_email="));
+    if (hasSso) {
+      setMode("sso");
+      setSsoLocked(true);
+    }
+  }, []);
 
   const handleCodeLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,9 +48,15 @@ export default function LoginPage() {
     }
   };
 
-  const handleSsoLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    // SSO logic to be implemented
+  const handleSsoLogin = async () => {
+    setSsoLoading(true);
+    setSsoError("");
+    try {
+      await signIn("microsoft-entra-id", { callbackUrl: "/api/auth/sso-bridge" });
+    } catch {
+      setSsoError("Sign in failed. Please try again.");
+      setSsoLoading(false);
+    }
   };
 
   return (
@@ -99,56 +114,58 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* ── SSO form ── */}
+          {/* ── SSO ── */}
           {mode === "sso" && (
-            <form onSubmit={handleSsoLogin} className="flex flex-col gap-4">
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: "#088a97", fontFamily: "Montserrat, sans-serif" }}>
-                  NLEC Email Address
-                </label>
-                <input
-                  type="email"
-                  value={ssoEmail}
-                  onChange={(e) => setSsoEmail(e.target.value)}
-                  placeholder="you@nlec.org.au"
-                  autoFocus
-                  className="w-full border-2 rounded-lg px-3 py-2.5 text-sm outline-none"
-                  style={{ borderColor: "#66c6bb", color: "#003462", fontFamily: "Montserrat, sans-serif" }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: "#088a97", fontFamily: "Montserrat, sans-serif" }}>
-                  Password
-                </label>
-                <input
-                  type="password"
-                  value={ssoPassword}
-                  onChange={(e) => setSsoPassword(e.target.value)}
-                  placeholder="Your NLEC password"
-                  className="w-full border-2 rounded-lg px-3 py-2.5 text-sm outline-none"
-                  style={{ borderColor: "#66c6bb", color: "#003462", fontFamily: "Montserrat, sans-serif" }}
-                />
-              </div>
-
-              <p className="text-xs text-center py-1.5 px-3 rounded-lg" style={{ background: "#fef3c7", color: "#92400e" }}>
-                SSO login coming soon
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-center" style={{ color: "#768081", fontFamily: "Montserrat, sans-serif" }}>
+                You will be redirected to Microsoft to sign in with your <strong>@nlec.org.au</strong> account.
               </p>
 
+              {ssoError && (
+                <p className="text-xs text-red-500 text-center bg-red-50 rounded-lg py-2 px-3">{ssoError}</p>
+              )}
+
               <button
-                type="submit"
-                disabled
-                className="w-full py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
+                onClick={handleSsoLogin}
+                disabled={ssoLoading}
+                className="w-full py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
                 style={{ background: "#003462", fontFamily: "Montserrat, sans-serif" }}
               >
-                Sign In with NLEC Email
+                {ssoLoading ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                    Redirecting…
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" viewBox="0 0 23 23" fill="none">
+                      <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+                      <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
+                      <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
+                      <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
+                    </svg>
+                    Sign in with Microsoft
+                  </>
+                )}
               </button>
 
-              <button type="button" onClick={() => setMode("choose")}
-                className="text-xs text-center transition-opacity hover:opacity-70"
-                style={{ color: "#768081", fontFamily: "Montserrat, sans-serif" }}>
-                ← Back
-              </button>
-            </form>
+              {ssoLocked ? (
+                <button type="button" onClick={() => { setMode("code"); setSsoLocked(false); setSsoError(""); }}
+                  className="text-xs text-center transition-opacity hover:opacity-50"
+                  style={{ color: "#c4c9ca", fontFamily: "Montserrat, sans-serif" }}>
+                  Use access code instead
+                </button>
+              ) : (
+                <button type="button" onClick={() => { setMode("choose"); setSsoError(""); }}
+                  className="text-xs text-center transition-opacity hover:opacity-70"
+                  style={{ color: "#768081", fontFamily: "Montserrat, sans-serif" }}>
+                  ← Back
+                </button>
+              )}
+            </div>
           )}
 
           {/* ── Access code form ── */}

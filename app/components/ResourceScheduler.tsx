@@ -168,6 +168,7 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
     fetchData(date);
   }, [date, fetchData]);
 
+
   // Keep a fast-access ref of all events for overlap checking during drag
   useEffect(() => {
     const gcal = (data.events as Array<{ resourceId: string; start: string; end: string }>);
@@ -513,17 +514,13 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
 
         {/* Toolbar */}
         <div
-          className="flex items-center gap-3 px-4 py-2 z-10"
+          className="flex items-center gap-2 px-4 py-2 z-10"
           style={{ background: BRAND.tealDark }}
         >
           {/* Logo */}
-          <img src="/nlec-logo-reverse.png" alt="NLEC" className="h-8 object-contain mr-3" />
-          <span className="text-white font-bold tracking-wider text-sm uppercase mr-3" style={{ opacity: 0.7 }}>
-            Resource Schedule
-          </span>
+          <img src="/nlec-logo-reverse.png" alt="NLEC" className="h-8 object-contain mr-2" />
 
-          {/* Date label */}
-          <span className="text-xs opacity-70 text-white">Date</span>
+          {/* Date input */}
           <input
             type="date"
             value={date}
@@ -536,29 +533,36 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
               colorScheme: "dark",
             }}
           />
+
+          {/* Today + Prev/Next grouped together */}
           <button
             onClick={() => setDate(localISODate())}
             className="px-3 py-1 text-xs rounded font-medium transition-colors"
-            style={{
-              background: BRAND.teal,
-              color: BRAND.navy,
-              fontFamily: "inherit",
-            }}
+            style={{ background: BRAND.teal, color: BRAND.navy, fontFamily: "inherit" }}
           >
             Today
           </button>
+          <button
+            onClick={() => navigate("prev")}
+            className="px-2.5 py-1 text-sm rounded font-medium transition-opacity hover:opacity-80"
+            style={{ background: "rgba(255,255,255,0.15)", color: "white", fontFamily: "inherit" }}
+          >
+            ←
+          </button>
+          <button
+            onClick={() => navigate("next")}
+            className="px-2.5 py-1 text-sm rounded font-medium transition-opacity hover:opacity-80"
+            style={{ background: "rgba(255,255,255,0.15)", color: "white", fontFamily: "inherit" }}
+          >
+            →
+          </button>
 
           {/* Zoom */}
-          <span className="text-xs opacity-70 text-white ml-2">Zoom</span>
           <select
             value={zoomIndex}
             onChange={(e) => setZoomIndex(Number(e.target.value))}
-            className="rounded px-2 py-1 text-sm border-0 outline-none"
-            style={{
-              background: "rgba(255,255,255,0.15)",
-              color: "white",
-              fontFamily: "inherit",
-            }}
+            className="rounded px-2 py-1 text-sm border-0 outline-none ml-1"
+            style={{ background: "rgba(255,255,255,0.15)", color: "white", fontFamily: "inherit" }}
           >
             {ZOOM_OPTIONS.map((z, i) => (
               <option key={i} value={i} style={{ background: BRAND.tealDark }}>{z.label}</option>
@@ -571,16 +575,15 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
             </span>
           )}
 
-          {/* Spacer */}
-          <div className="ml-auto flex items-center gap-3">
-            {/* Admin: manage requests link */}
+          {/* Right side */}
+          <div className="ml-auto flex items-center gap-2">
             {isAdmin && (
               <Link
                 href="/admin"
                 className="relative text-xs px-3 py-1 rounded font-medium transition-opacity hover:opacity-80"
                 style={{ background: "rgba(255,255,255,0.15)", color: "white" }}
               >
-                Manage Requests
+                Admin Panel
                 {pendingBookings.filter(b => b.status === "pending").length > 0 && (
                   <span
                     className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full text-xs flex items-center justify-center font-bold"
@@ -601,7 +604,7 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
             >
               {role}
             </span>
-            {/* Logout */}
+            {/* Sign out — rightmost */}
             <button
               onClick={async () => {
                 await fetch("/api/auth/logout", { method: "POST" });
@@ -611,22 +614,6 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
               style={{ background: "rgba(255,255,255,0.15)", color: "white" }}
             >
               Sign out
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => navigate("prev")}
-              className="px-3 py-1 text-sm rounded font-medium transition-opacity hover:opacity-80"
-              style={{ background: "rgba(255,255,255,0.15)", color: "white", fontFamily: "inherit" }}
-            >
-              ← Prev
-            </button>
-            <button
-              onClick={() => navigate("next")}
-              className="px-3 py-1 text-sm rounded font-medium transition-opacity hover:opacity-80"
-              style={{ background: "rgba(255,255,255,0.15)", color: "white", fontFamily: "inherit" }}
-            >
-              Next →
             </button>
           </div>
         </div>

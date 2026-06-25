@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const BRAND = {
   teal:      "#66c6bb",
@@ -67,6 +67,7 @@ function formatDuration(start: string, end: string) {
 
 export default function AdminClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [bookings, setBookings] = useState<BookingEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>("pending");
@@ -93,6 +94,30 @@ export default function AdminClient() {
   const [repeatCount, setRepeatCount] = useState(4);
   const [repeatUntil, setRepeatUntil] = useState("");
 
+  // Page tabs — honour ?page= query param from main screen links
+  const [page, setPage] = useState<"bookings" | "admins" | "codes">(() => {
+    const p = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("page") : null;
+    return (p === "admins" || p === "codes") ? p : "bookings";
+  });
+
+  // Manage admins state
+  const [admins, setAdmins] = useState<{ email: string; addedAt: string }[]>([]);
+  const [adminsLoading, setAdminsLoading] = useState(false);
+  const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [adminAddError, setAdminAddError] = useState("");
+  const [adminAddLoading, setAdminAddLoading] = useState(false);
+  const [adminDeleteLoading, setAdminDeleteLoading] = useState<string | null>(null);
+
+  // Access codes state
+  const [guestCode, setGuestCode] = useState("");
+  const [viewerCode, setViewerCode] = useState("");
+  const [codesLoading, setCodesLoading] = useState(false);
+  const [codesSaving, setCodesSaving] = useState(false);
+  const [codesError, setCodesError] = useState("");
+  const [codesSaved, setCodesSaved] = useState(false);
+  const [showGuestCode, setShowGuestCode] = useState(false);
+  const [showViewerCode, setShowViewerCode] = useState(false);
+
   const goToSchedule = (isoStart: string) => {
     const d = new Date(isoStart);
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -114,6 +139,98 @@ export default function AdminClient() {
   }, []);
 
   useEffect(() => { fetchBookings(); }, [fetchBookings]);
+
+  const fetchAdmins = useCallback(async () => {
+    setAdminsLoading(true);
+    try {
+      const res = await fetch("/api/admin-list");
+      const json = await res.json();
+      setAdmins(json.admins ?? []);
+    } finally {
+      setAdminsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (page === "admins") fetchAdmins(); }, [page, fetchAdmins]);
+
+  const fetchCodes = useCallback(async () => {
+    setCodesLoading(true);
+    try {
+      const res = await fetch("/api/access-codes");
+      const json = await res.json();
+      setGuestCode(json.guest ?? "");
+      setViewerCode(json.viewer ?? "");
+    } finally {
+      setCodesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (page === "codes") fetchCodes(); }, [page, fetchCodes]);
+
+  const saveCodes = async () => {
+    if (!guestCode.trim() || !viewerCode.trim()) {
+      setCodesError("Access codes cannot be empty.");
+      return;
+    }
+    setCodesSaving(true);
+    setCodesError("");
+    setCodesSaved(false);
+    try {
+      const res = await fetch("/api/access-codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guest: guestCode.trim(), viewer: viewerCode.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setCodesError(json.error ?? "Failed to save."); return; }
+      setCodesSaved(true);
+      setTimeout(() => setCodesSaved(false), 3000);
+    } catch {
+      setCodesError("Network error. Please try again.");
+    } finally {
+      setCodesSaving(false);
+    }
+  };
+
+  const addAdmin = async () => {
+    const email = newAdminEmail.trim().toLowerCase();
+    if (!email.endsWith("@nlec.org.au")) {
+      setAdminAddError("Only @nlec.org.au emails are allowed.");
+      return;
+    }
+    setAdminAddLoading(true);
+    setAdminAddError("");
+    try {
+      const res = await fetch("/api/admin-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setAdminAddError(json.error ?? "Failed to add admin."); return; }
+      setAdmins(json.admins);
+      setNewAdminEmail("");
+    } catch {
+      setAdminAddError("Network error. Please try again.");
+    } finally {
+      setAdminAddLoading(false);
+    }
+  };
+
+  const removeAdmin = async (email: string) => {
+    setAdminDeleteLoading(email);
+    try {
+      const res = await fetch("/api/admin-list", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const json = await res.json();
+      if (res.ok) setAdmins(json.admins);
+    } finally {
+      setAdminDeleteLoading(null);
+    }
+  };
 
   const startAction = (entry: BookingEntry, action: "approve" | "reject") => {
     setConfirmingId(entry.id);
@@ -246,9 +363,11 @@ export default function AdminClient() {
         <img src="/nlec-logo-reverse.png" alt="NLEC" className="h-8 object-contain" />
         <div className="ml-1">
           <p className="text-white text-xs uppercase tracking-wider" style={{ opacity: 0.7 }}>Admin</p>
-          <h1 className="text-white font-bold text-base leading-tight">Booking Requests</h1>
+          <h1 className="text-white font-bold text-base leading-tight">
+            {page === "bookings" ? "Booking Requests" : page === "admins" ? "Manage Admins" : "Access Codes"}
+          </h1>
         </div>
-        {pending > 0 && (
+        {page === "bookings" && pending > 0 && (
           <span
             className="px-2.5 py-0.5 rounded-full text-xs font-bold"
             style={{ background: "#f59e0b", color: BRAND.navy }}
@@ -256,19 +375,210 @@ export default function AdminClient() {
             {pending} pending
           </span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setPage("bookings")}
+            className="text-xs px-3 py-1.5 rounded font-medium transition-opacity hover:opacity-80"
+            style={{ background: page === "bookings" ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.15)", color: "white" }}
+          >
+            Bookings
+          </button>
+          <button
+            onClick={() => setPage("admins")}
+            className="text-xs px-3 py-1.5 rounded font-medium transition-opacity hover:opacity-80"
+            style={{ background: page === "admins" ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.15)", color: "white" }}
+          >
+            Manage Admins
+          </button>
+          <button
+            onClick={() => setPage("codes")}
+            className="text-xs px-3 py-1.5 rounded font-medium transition-opacity hover:opacity-80"
+            style={{ background: page === "codes" ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.15)", color: "white" }}
+          >
+            Access Codes
+          </button>
           <Link
             href="/"
             className="text-xs px-3 py-1.5 rounded font-medium transition-opacity hover:opacity-80"
             style={{ background: "rgba(255,255,255,0.15)", color: "white" }}
           >
-            ← Back to Schedule
+            ← Schedule
           </Link>
         </div>
       </div>
       <div style={{ height: 3, background: BRAND.teal }} />
 
-      {/* Filter tabs */}
+      {/* ── Manage Admins page ── */}
+      {page === "admins" && (
+        <div className="px-6 py-8 max-w-xl">
+          <h2 className="text-base font-semibold mb-1" style={{ color: BRAND.navy }}>Admin Accounts</h2>
+          <p className="text-xs mb-5" style={{ color: BRAND.grey }}>
+            @nlec.org.au users in this list receive admin access when they sign in via SSO.
+          </p>
+
+          {/* Add admin */}
+          <div className="flex gap-2 mb-4">
+            <input
+              type="email"
+              value={newAdminEmail}
+              onChange={(e) => { setNewAdminEmail(e.target.value); setAdminAddError(""); }}
+              onKeyDown={(e) => e.key === "Enter" && addAdmin()}
+              placeholder="name@nlec.org.au"
+              className="flex-1 border-2 rounded-lg px-3 py-2 text-sm outline-none"
+              style={{ borderColor: BRAND.teal, fontFamily: "inherit" }}
+            />
+            <button
+              onClick={addAdmin}
+              disabled={adminAddLoading || !newAdminEmail.trim()}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 transition-opacity hover:opacity-90"
+              style={{ background: BRAND.tealDark, fontFamily: "inherit" }}
+            >
+              {adminAddLoading ? "Adding…" : "Add"}
+            </button>
+          </div>
+          {adminAddError && (
+            <p className="text-xs text-red-500 mb-3 bg-red-50 rounded-lg px-3 py-2">{adminAddError}</p>
+          )}
+
+          {/* Admin list */}
+          {adminsLoading ? (
+            <div className="flex items-center gap-2 py-8 justify-center" style={{ color: BRAND.tealDark }}>
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              Loading…
+            </div>
+          ) : admins.length === 0 ? (
+            <p className="text-sm text-center py-8" style={{ color: BRAND.grey }}>No admins added yet.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {admins.map((a) => (
+                <div
+                  key={a.email}
+                  className="flex items-center justify-between gap-3 bg-white rounded-xl px-4 py-3 shadow-sm"
+                >
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: BRAND.navy }}>{a.email}</p>
+                    <p className="text-xs mt-0.5" style={{ color: BRAND.grey }}>
+                      Added {new Date(a.addedAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => removeAdmin(a.email)}
+                    disabled={adminDeleteLoading === a.email}
+                    className="text-xs px-3 py-1.5 rounded-lg font-medium border transition-opacity hover:opacity-80 disabled:opacity-40"
+                    style={{ borderColor: "#fca5a5", color: "#dc2626", background: "#fff5f5" }}
+                  >
+                    {adminDeleteLoading === a.email ? "Removing…" : "Remove"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Access Codes page ── */}
+      {page === "codes" && (
+        <div className="px-6 py-8 max-w-md">
+          <h2 className="text-base font-semibold mb-1" style={{ color: BRAND.navy }}>Access Codes</h2>
+          <p className="text-xs mb-6" style={{ color: BRAND.grey }}>
+            Codes used on the login screen. Share with the appropriate people — anyone with the code gets that role.
+          </p>
+
+          {codesLoading ? (
+            <div className="flex items-center gap-2 py-8 justify-center" style={{ color: BRAND.tealDark }}>
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              Loading…
+            </div>
+          ) : (
+            <div className="flex flex-col gap-5">
+              {/* Guest code */}
+              <div className="bg-white rounded-xl shadow-sm px-5 py-4">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-semibold" style={{ color: BRAND.navy }}>Guest Code</label>
+                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#e8f7f6", color: BRAND.tealDark }}>
+                    Can submit booking requests
+                  </span>
+                </div>
+                <p className="text-xs mb-3" style={{ color: BRAND.grey }}>Members of the public or guests who need to request a room.</p>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={showGuestCode ? "text" : "password"}
+                      value={guestCode}
+                      onChange={(e) => setGuestCode(e.target.value)}
+                      className="w-full border-2 rounded-lg px-3 py-2 text-sm outline-none pr-10"
+                      style={{ borderColor: BRAND.teal, fontFamily: "inherit" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowGuestCode(v => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs"
+                      style={{ color: BRAND.grey }}
+                    >
+                      {showGuestCode ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Viewer code */}
+              <div className="bg-white rounded-xl shadow-sm px-5 py-4">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-semibold" style={{ color: BRAND.navy }}>Viewer Code</label>
+                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0f4ff", color: "#3b5bdb" }}>
+                    View schedule only
+                  </span>
+                </div>
+                <p className="text-xs mb-3" style={{ color: BRAND.grey }}>Staff or volunteers who need to see the schedule but not make bookings.</p>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={showViewerCode ? "text" : "password"}
+                      value={viewerCode}
+                      onChange={(e) => setViewerCode(e.target.value)}
+                      className="w-full border-2 rounded-lg px-3 py-2 text-sm outline-none pr-10"
+                      style={{ borderColor: "#a5b4fc", fontFamily: "inherit" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowViewerCode(v => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs"
+                      style={{ color: BRAND.grey }}
+                    >
+                      {showViewerCode ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {codesError && (
+                <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{codesError}</p>
+              )}
+              {codesSaved && (
+                <p className="text-xs text-green-600 bg-green-50 rounded-lg px-3 py-2">✓ Access codes saved.</p>
+              )}
+
+              <button
+                onClick={saveCodes}
+                disabled={codesSaving}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-opacity hover:opacity-90"
+                style={{ background: BRAND.tealDark }}
+              >
+                {codesSaving ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Bookings page ── */}
+      {page === "bookings" && (<>
       <div className="px-6 pt-5 pb-3 flex items-center gap-2 flex-wrap">
         {FILTERS.map(f => (
           <button
@@ -664,6 +974,7 @@ export default function AdminClient() {
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 }
