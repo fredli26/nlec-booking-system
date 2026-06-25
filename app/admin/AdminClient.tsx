@@ -81,6 +81,18 @@ export default function AdminClient() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkRemoving, setBulkRemoving] = useState(false);
 
+  // Approve editing fields
+  const [approveTitle, setApproveTitle] = useState("");
+  const [approveDate, setApproveDate] = useState("");
+  const [approveStartTime, setApproveStartTime] = useState("");
+  const [approveEndTime, setApproveEndTime] = useState("");
+  const [approveDesc, setApproveDesc] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [repeatFreq, setRepeatFreq] = useState<"NONE" | "DAILY" | "WEEKLY" | "MONTHLY">("NONE");
+  const [repeatEndType, setRepeatEndType] = useState<"count" | "date">("count");
+  const [repeatCount, setRepeatCount] = useState(4);
+  const [repeatUntil, setRepeatUntil] = useState("");
+
   const goToSchedule = (isoStart: string) => {
     const d = new Date(isoStart);
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -103,11 +115,26 @@ export default function AdminClient() {
 
   useEffect(() => { fetchBookings(); }, [fetchBookings]);
 
-  const startAction = (id: string, action: "approve" | "reject") => {
-    setConfirmingId(id);
+  const startAction = (entry: BookingEntry, action: "approve" | "reject") => {
+    setConfirmingId(entry.id);
     setConfirmAction(action);
     setRejectReason("");
     setActionError(null);
+    if (action === "approve") {
+      const s = new Date(entry.booking.start);
+      const e = new Date(entry.booking.end);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      setApproveTitle(entry.booking.title);
+      setApproveDate(`${s.getFullYear()}-${pad(s.getMonth() + 1)}-${pad(s.getDate())}`);
+      setApproveStartTime(`${pad(s.getHours())}:${pad(s.getMinutes())}`);
+      setApproveEndTime(`${pad(e.getHours())}:${pad(e.getMinutes())}`);
+      setApproveDesc(entry.booking.description ?? "");
+      setShowAdvanced(false);
+      setRepeatFreq("NONE");
+      setRepeatEndType("count");
+      setRepeatCount(4);
+      setRepeatUntil("");
+    }
   };
 
   const cancelAction = () => {
@@ -122,6 +149,8 @@ export default function AdminClient() {
     setActionLoading(true);
     setActionError(null);
     try {
+      const startDT = new Date(`${approveDate}T${approveStartTime}`);
+      const endDT = new Date(`${approveDate}T${approveEndTime}`);
       const res = await fetch("/api/bookings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -129,6 +158,20 @@ export default function AdminClient() {
           id: confirmingId,
           action: confirmAction,
           reason: rejectReason.trim() || undefined,
+          ...(confirmAction === "approve" && {
+            override: {
+              title: approveTitle.trim(),
+              start: startDT.toISOString(),
+              end: endDT.toISOString(),
+              description: approveDesc.trim(),
+            },
+            recurrence: repeatFreq !== "NONE" ? {
+              freq: repeatFreq,
+              endType: repeatEndType,
+              count: repeatEndType === "count" ? repeatCount : undefined,
+              until: repeatEndType === "date" ? repeatUntil : undefined,
+            } : undefined,
+          }),
         }),
       });
       const json = await res.json();
@@ -463,14 +506,14 @@ export default function AdminClient() {
                     {entry.status === "pending" && !isConfirming && (
                       <div className="flex gap-2 mt-4">
                         <button
-                          onClick={() => startAction(entry.id, "approve")}
+                          onClick={() => startAction(entry, "approve")}
                           className="flex-1 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
                           style={{ background: "#10b981" }}
                         >
                           Approve
                         </button>
                         <button
-                          onClick={() => startAction(entry.id, "reject")}
+                          onClick={() => startAction(entry, "reject")}
                           className="flex-1 py-2 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
                           style={{ background: "#fee2e2", color: "#dc2626" }}
                         >
@@ -488,52 +531,125 @@ export default function AdminClient() {
                           border: `1px solid ${confirmAction === "approve" ? "#bbf7d0" : "#fecaca"}`,
                         }}
                       >
-                        <p
-                          className="text-sm font-semibold mb-1"
-                          style={{ color: confirmAction === "approve" ? "#065f46" : "#991b1b" }}
-                        >
-                          {confirmAction === "approve"
-                            ? "Approve this booking?"
-                            : "Reject this booking?"}
+                        <p className="text-sm font-semibold mb-1" style={{ color: confirmAction === "approve" ? "#065f46" : "#991b1b" }}>
+                          {confirmAction === "approve" ? "Approve this booking?" : "Reject this booking?"}
                         </p>
-                        <p
-                          className="text-xs mb-3"
-                          style={{ color: confirmAction === "approve" ? "#047857" : "#b91c1c" }}
-                        >
+                        <p className="text-xs mb-3" style={{ color: confirmAction === "approve" ? "#047857" : "#b91c1c" }}>
                           {confirmAction === "approve"
-                            ? "This will create the event in Google Calendar."
+                            ? "Edit details if needed, then confirm to create the event in Google Calendar."
                             : "The requester will not be notified automatically."}
                         </p>
+
+                        {/* Approve editable fields */}
+                        {confirmAction === "approve" && (
+                          <div className="flex flex-col gap-2.5 mb-3">
+                            <div>
+                              <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Title</label>
+                              <input type="text" value={approveTitle} onChange={e => setApproveTitle(e.target.value)}
+                                className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Date</label>
+                              <input type="date" value={approveDate} onChange={e => setApproveDate(e.target.value)}
+                                className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Start time</label>
+                                <input type="time" value={approveStartTime} onChange={e => setApproveStartTime(e.target.value)}
+                                  className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                  style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                              </div>
+                              <div>
+                                <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>End time</label>
+                                <input type="time" value={approveEndTime} onChange={e => setApproveEndTime(e.target.value)}
+                                  className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                  style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Description</label>
+                              <textarea value={approveDesc} onChange={e => setApproveDesc(e.target.value)} rows={2}
+                                className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none resize-none"
+                                style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                            </div>
+
+                            {/* Advanced / Repeat */}
+                            <button onClick={() => setShowAdvanced(v => !v)}
+                              className="text-xs font-semibold text-left flex items-center gap-1 transition-opacity hover:opacity-70"
+                              style={{ color: "#047857" }}>
+                              {showAdvanced ? "▾" : "▸"} Advanced
+                            </button>
+                            {showAdvanced && (
+                              <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ background: "#dcfce7", border: "1px solid #86efac" }}>
+                                <div>
+                                  <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Repeat</label>
+                                  <select value={repeatFreq} onChange={e => setRepeatFreq(e.target.value as typeof repeatFreq)}
+                                    className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                    style={{ borderColor: "#86efac", fontFamily: "inherit" }}>
+                                    <option value="NONE">No repeat</option>
+                                    <option value="DAILY">Daily</option>
+                                    <option value="WEEKLY">Weekly</option>
+                                    <option value="MONTHLY">Monthly</option>
+                                  </select>
+                                </div>
+                                {repeatFreq !== "NONE" && (
+                                  <>
+                                    <div>
+                                      <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Ends</label>
+                                      <select value={repeatEndType} onChange={e => setRepeatEndType(e.target.value as "count" | "date")}
+                                        className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                        style={{ borderColor: "#86efac", fontFamily: "inherit" }}>
+                                        <option value="count">After N occurrences</option>
+                                        <option value="date">On date</option>
+                                      </select>
+                                    </div>
+                                    {repeatEndType === "count" ? (
+                                      <div className="flex items-center gap-2">
+                                        <label className="text-xs font-semibold" style={{ color: "#065f46" }}>Occurrences</label>
+                                        <input type="number" min={2} max={104} value={repeatCount}
+                                          onChange={e => setRepeatCount(Number(e.target.value))}
+                                          className="w-20 border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                          style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                                      </div>
+                                    ) : (
+                                      <div>
+                                        <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Until</label>
+                                        <input type="date" value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)}
+                                          className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                          style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Reject reason */}
                         {confirmAction === "reject" && (
-                          <input
-                            autoFocus
-                            type="text"
-                            value={rejectReason}
+                          <input autoFocus type="text" value={rejectReason}
                             onChange={(e) => setRejectReason(e.target.value)}
                             placeholder="Reason for rejection (optional)"
                             className="w-full border rounded-lg px-3 py-2 text-sm outline-none mb-3"
                             style={{ borderColor: "#fca5a5", fontFamily: "inherit" }}
-                            onKeyDown={(e) => e.key === "Enter" && executeAction()}
-                          />
+                            onKeyDown={(e) => e.key === "Enter" && executeAction()} />
                         )}
                         {actionError && (
                           <p className="text-xs text-red-600 mb-2 font-medium">{actionError}</p>
                         )}
                         <div className="flex gap-2">
-                          <button
-                            onClick={cancelAction}
-                            disabled={actionLoading}
+                          <button onClick={cancelAction} disabled={actionLoading}
                             className="flex-1 py-2 rounded-lg text-sm font-medium border"
-                            style={{ borderColor: "#d1d5db", color: BRAND.grey }}
-                          >
+                            style={{ borderColor: "#d1d5db", color: BRAND.grey }}>
                             Cancel
                           </button>
-                          <button
-                            onClick={executeAction}
-                            disabled={actionLoading}
+                          <button onClick={executeAction} disabled={actionLoading}
                             className="flex-1 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-                            style={{ background: confirmAction === "approve" ? "#10b981" : "#dc2626" }}
-                          >
+                            style={{ background: confirmAction === "approve" ? "#10b981" : "#dc2626" }}>
                             {actionLoading
                               ? (confirmAction === "approve" ? "Approving…" : "Rejecting…")
                               : (confirmAction === "approve" ? "Confirm Approve" : "Confirm Reject")}

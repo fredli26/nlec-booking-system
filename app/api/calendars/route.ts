@@ -117,10 +117,21 @@ export async function DELETE(request: Request) {
   }
 }
 
+function buildRRule(r: { freq: string; endType: string; count?: number; until?: string }): string {
+  let rule = `RRULE:FREQ=${r.freq}`;
+  if (r.endType === "count" && r.count) {
+    rule += `;COUNT=${r.count}`;
+  } else if (r.endType === "date" && r.until) {
+    const until = new Date(r.until).toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";
+    rule += `;UNTIL=${until}`;
+  }
+  return rule;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { calendarId, title, start, end, description } = body;
+    const { calendarId, title, start, end, description, recurrence, timezone } = body;
 
     if (!calendarId || !title || !start || !end) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -128,14 +139,17 @@ export async function POST(request: Request) {
 
     const auth = getAuth();
     const calendar = google.calendar({ version: "v3", auth });
+    const tz = timezone ?? "Australia/Melbourne";
+    const recurrenceRules = recurrence ? [buildRRule(recurrence)] : undefined;
 
     const event = await calendar.events.insert({
       calendarId,
       requestBody: {
         summary: title,
         description: description ?? "",
-        start: { dateTime: start },
-        end: { dateTime: end },
+        start: { dateTime: start, timeZone: tz },
+        end: { dateTime: end, timeZone: tz },
+        recurrence: recurrenceRules,
       },
     });
 

@@ -84,6 +84,7 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
     color: string;
     isPending?: boolean;
     pendingGuest?: { name: string; email: string; phone: string };
+    pendingDescription?: string;
   } | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
@@ -95,6 +96,18 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
   const [pendingActionReason, setPendingActionReason] = useState("");
   const [pendingActionLoading, setPendingActionLoading] = useState(false);
   const [pendingActionError, setPendingActionError] = useState<string | null>(null);
+
+  // Approve editing overrides
+  const [approveTitle, setApproveTitle] = useState("");
+  const [approveDate, setApproveDate] = useState("");
+  const [approveStartTime, setApproveStartTime] = useState("");
+  const [approveEndTime, setApproveEndTime] = useState("");
+  const [approveDesc, setApproveDesc] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [repeatFreq, setRepeatFreq] = useState<"NONE" | "DAILY" | "WEEKLY" | "MONTHLY">("NONE");
+  const [repeatEndType, setRepeatEndType] = useState<"count" | "date">("count");
+  const [repeatCount, setRepeatCount] = useState(4);
+  const [repeatUntil, setRepeatUntil] = useState("");
 
   const [booking, setBooking] = useState<{
     calendarId: string;
@@ -238,6 +251,11 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
     setGuestName("");
     setGuestEmail("");
     setGuestPhone("");
+    setShowAdvanced(false);
+    setRepeatFreq("NONE");
+    setRepeatEndType("count");
+    setRepeatCount(4);
+    setRepeatUntil("");
   };
 
   const submitBooking = async () => {
@@ -254,6 +272,12 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
           description: bookingDesc.trim(),
           start: (bookingStart ?? booking.start).toISOString(),
           end: (bookingEnd ?? booking.end).toISOString(),
+          recurrence: repeatFreq !== "NONE" ? {
+            freq: repeatFreq,
+            endType: repeatEndType,
+            count: repeatEndType === "count" ? repeatCount : undefined,
+            until: repeatEndType === "date" ? repeatUntil : undefined,
+          } : undefined,
         }),
       });
       const json = await res.json();
@@ -307,6 +331,24 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
     setPendingAction(null);
     setPendingActionReason("");
     setPendingActionError(null);
+    setShowAdvanced(false);
+    setRepeatFreq("NONE");
+  };
+
+  const startInlineApprove = (ev: NonNullable<typeof selectedEvent>) => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    setApproveTitle(ev.title);
+    setApproveDate(`${ev.start.getFullYear()}-${pad(ev.start.getMonth() + 1)}-${pad(ev.start.getDate())}`);
+    setApproveStartTime(`${pad(ev.start.getHours())}:${pad(ev.start.getMinutes())}`);
+    setApproveEndTime(`${pad(ev.end.getHours())}:${pad(ev.end.getMinutes())}`);
+    setApproveDesc(ev.pendingDescription ?? "");
+    setShowAdvanced(false);
+    setRepeatFreq("NONE");
+    setRepeatEndType("count");
+    setRepeatCount(4);
+    setRepeatUntil("");
+    setPendingAction("approve");
+    setPendingActionError(null);
   };
 
   const submitPendingAction = async () => {
@@ -315,6 +357,8 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
     setPendingActionLoading(true);
     setPendingActionError(null);
     try {
+      const startDT = new Date(`${approveDate}T${approveStartTime}`);
+      const endDT = new Date(`${approveDate}T${approveEndTime}`);
       const res = await fetch("/api/bookings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -322,6 +366,20 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
           id: entryId,
           action: pendingAction,
           reason: pendingActionReason.trim() || undefined,
+          ...(pendingAction === "approve" && {
+            override: {
+              title: approveTitle.trim(),
+              start: startDT.toISOString(),
+              end: endDT.toISOString(),
+              description: approveDesc.trim(),
+            },
+            recurrence: repeatFreq !== "NONE" ? {
+              freq: repeatFreq,
+              endType: repeatEndType,
+              count: repeatEndType === "count" ? repeatCount : undefined,
+              until: repeatEndType === "date" ? repeatUntil : undefined,
+            } : undefined,
+          }),
         }),
       });
       const json = await res.json();
@@ -694,6 +752,7 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
                 color: isPending ? "#f59e0b" : (info.event.backgroundColor ?? BRAND.teal),
                 isPending,
                 pendingGuest: isPending && pendingEntry ? pendingEntry.guest : undefined,
+                pendingDescription: isPending && pendingEntry ? pendingEntry.booking.description : undefined,
               });
             }}
           />
@@ -900,6 +959,64 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
                       style={{ borderColor: BRAND.teal, color: BRAND.navy, fontFamily: "inherit" }}
                     />
                   </div>
+                  {/* Advanced / Repeat — admin only */}
+                  {isAdmin && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvanced(v => !v)}
+                        className="text-xs font-semibold text-left flex items-center gap-1 transition-opacity hover:opacity-70"
+                        style={{ color: BRAND.tealDark }}
+                      >
+                        {showAdvanced ? "▾" : "▸"} Advanced
+                      </button>
+                      {showAdvanced && (
+                        <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ background: BRAND.tealLight, border: `1px solid ${BRAND.teal}` }}>
+                          <div>
+                            <label className="text-xs font-semibold block mb-1" style={{ color: BRAND.tealDark }}>Repeat</label>
+                            <select value={repeatFreq} onChange={e => setRepeatFreq(e.target.value as typeof repeatFreq)}
+                              className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                              style={{ borderColor: BRAND.teal, color: BRAND.navy, fontFamily: "inherit" }}>
+                              <option value="NONE">No repeat</option>
+                              <option value="DAILY">Daily</option>
+                              <option value="WEEKLY">Weekly</option>
+                              <option value="MONTHLY">Monthly</option>
+                            </select>
+                          </div>
+                          {repeatFreq !== "NONE" && (
+                            <>
+                              <div>
+                                <label className="text-xs font-semibold block mb-1" style={{ color: BRAND.tealDark }}>Ends</label>
+                                <select value={repeatEndType} onChange={e => setRepeatEndType(e.target.value as "count" | "date")}
+                                  className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                  style={{ borderColor: BRAND.teal, color: BRAND.navy, fontFamily: "inherit" }}>
+                                  <option value="count">After N occurrences</option>
+                                  <option value="date">On date</option>
+                                </select>
+                              </div>
+                              {repeatEndType === "count" ? (
+                                <div className="flex items-center gap-2">
+                                  <label className="text-xs font-semibold" style={{ color: BRAND.tealDark }}>Occurrences</label>
+                                  <input type="number" min={2} max={104} value={repeatCount}
+                                    onChange={e => setRepeatCount(Number(e.target.value))}
+                                    className="w-20 border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                    style={{ borderColor: BRAND.teal, color: BRAND.navy, fontFamily: "inherit" }} />
+                                </div>
+                              ) : (
+                                <div>
+                                  <label className="text-xs font-semibold block mb-1" style={{ color: BRAND.tealDark }}>Until</label>
+                                  <input type="date" value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)}
+                                    className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                    style={{ borderColor: BRAND.teal, color: BRAND.navy, fontFamily: "inherit" }} />
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+
                   {bookingError && (
                     <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{bookingError}</p>
                   )}
@@ -1052,7 +1169,7 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
                 {!pendingAction ? (
                   <div className="flex gap-2">
                     <button
-                      onClick={() => { setPendingAction("approve"); setPendingActionError(null); }}
+                      onClick={() => startInlineApprove(selectedEvent)}
                       className="flex-1 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
                       style={{ background: "#10b981" }}
                     >
@@ -1067,51 +1184,130 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
                     </button>
                   </div>
                 ) : (
-                  <div
-                    className="rounded-xl p-4"
-                    style={{
-                      background: pendingAction === "approve" ? "#f0fdf4" : "#fef2f2",
-                      border: `1px solid ${pendingAction === "approve" ? "#bbf7d0" : "#fecaca"}`,
-                    }}
-                  >
+                  <div className="rounded-xl p-4" style={{
+                    background: pendingAction === "approve" ? "#f0fdf4" : "#fef2f2",
+                    border: `1px solid ${pendingAction === "approve" ? "#bbf7d0" : "#fecaca"}`,
+                  }}>
                     <p className="text-sm font-semibold mb-1" style={{ color: pendingAction === "approve" ? "#065f46" : "#991b1b" }}>
                       {pendingAction === "approve" ? "Approve this booking?" : "Reject this booking?"}
                     </p>
                     <p className="text-xs mb-3" style={{ color: pendingAction === "approve" ? "#047857" : "#b91c1c" }}>
                       {pendingAction === "approve"
-                        ? "This will create the event in Google Calendar."
+                        ? "Edit details if needed, then confirm."
                         : "The requester will not be notified automatically."}
                     </p>
+
+                    {/* Approve editable fields */}
+                    {pendingAction === "approve" && (
+                      <div className="flex flex-col gap-2 mb-3">
+                        <div>
+                          <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Title</label>
+                          <input type="text" value={approveTitle} onChange={e => setApproveTitle(e.target.value)}
+                            className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                            style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Date</label>
+                          <input type="date" value={approveDate} onChange={e => setApproveDate(e.target.value)}
+                            className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                            style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Start time</label>
+                            <input type="time" value={approveStartTime} onChange={e => setApproveStartTime(e.target.value)}
+                              className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                              style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>End time</label>
+                            <input type="time" value={approveEndTime} onChange={e => setApproveEndTime(e.target.value)}
+                              className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                              style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Description</label>
+                          <textarea value={approveDesc} onChange={e => setApproveDesc(e.target.value)} rows={2}
+                            className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none resize-none"
+                            style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                        </div>
+
+                        {/* Advanced / Repeat */}
+                        <button onClick={() => setShowAdvanced(v => !v)}
+                          className="text-xs font-semibold text-left flex items-center gap-1 transition-opacity hover:opacity-70"
+                          style={{ color: "#047857" }}>
+                          {showAdvanced ? "▾" : "▸"} Advanced
+                        </button>
+                        {showAdvanced && (
+                          <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ background: "#dcfce7", border: "1px solid #86efac" }}>
+                            <div>
+                              <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Repeat</label>
+                              <select value={repeatFreq} onChange={e => setRepeatFreq(e.target.value as typeof repeatFreq)}
+                                className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                style={{ borderColor: "#86efac", fontFamily: "inherit" }}>
+                                <option value="NONE">No repeat</option>
+                                <option value="DAILY">Daily</option>
+                                <option value="WEEKLY">Weekly</option>
+                                <option value="MONTHLY">Monthly</option>
+                              </select>
+                            </div>
+                            {repeatFreq !== "NONE" && (
+                              <>
+                                <div>
+                                  <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Ends</label>
+                                  <select value={repeatEndType} onChange={e => setRepeatEndType(e.target.value as "count" | "date")}
+                                    className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                    style={{ borderColor: "#86efac", fontFamily: "inherit" }}>
+                                    <option value="count">After N occurrences</option>
+                                    <option value="date">On date</option>
+                                  </select>
+                                </div>
+                                {repeatEndType === "count" ? (
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-xs font-semibold" style={{ color: "#065f46" }}>Occurrences</label>
+                                    <input type="number" min={2} max={104} value={repeatCount}
+                                      onChange={e => setRepeatCount(Number(e.target.value))}
+                                      className="w-20 border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                      style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <label className="text-xs font-semibold block mb-1" style={{ color: "#065f46" }}>Until</label>
+                                    <input type="date" value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)}
+                                      className="w-full border rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                                      style={{ borderColor: "#86efac", fontFamily: "inherit" }} />
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Reject reason */}
                     {pendingAction === "reject" && (
-                      <input
-                        autoFocus
-                        type="text"
-                        value={pendingActionReason}
+                      <input autoFocus type="text" value={pendingActionReason}
                         onChange={(e) => setPendingActionReason(e.target.value)}
                         placeholder="Reason for rejection (optional)"
                         className="w-full border rounded-lg px-3 py-2 text-sm outline-none mb-3"
                         style={{ borderColor: "#fca5a5", fontFamily: "inherit" }}
-                        onKeyDown={(e) => e.key === "Enter" && submitPendingAction()}
-                      />
+                        onKeyDown={(e) => e.key === "Enter" && submitPendingAction()} />
                     )}
                     {pendingActionError && (
                       <p className="text-xs text-red-600 mb-2 font-medium">{pendingActionError}</p>
                     )}
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => { setPendingAction(null); setPendingActionError(null); }}
+                      <button onClick={() => { setPendingAction(null); setPendingActionError(null); }}
                         disabled={pendingActionLoading}
                         className="flex-1 py-1.5 rounded-lg text-xs font-medium border"
-                        style={{ borderColor: "#d1d5db", color: BRAND.grey }}
-                      >
+                        style={{ borderColor: "#d1d5db", color: BRAND.grey }}>
                         Cancel
                       </button>
-                      <button
-                        onClick={submitPendingAction}
-                        disabled={pendingActionLoading}
+                      <button onClick={submitPendingAction} disabled={pendingActionLoading}
                         className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-60"
-                        style={{ background: pendingAction === "approve" ? "#10b981" : "#dc2626" }}
-                      >
+                        style={{ background: pendingAction === "approve" ? "#10b981" : "#dc2626" }}>
                         {pendingActionLoading
                           ? (pendingAction === "approve" ? "Approving…" : "Rejecting…")
                           : (pendingAction === "approve" ? "Confirm Approve" : "Confirm Reject")}

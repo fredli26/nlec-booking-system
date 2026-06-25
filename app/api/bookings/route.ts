@@ -19,7 +19,7 @@ const FILE = path.join(process.cwd(), "data", "pending-bookings.json");
 const ARCHIVE_FILE = path.join(process.cwd(), "data", "archived-bookings.json");
 const CONFIG_FILE = path.join(process.cwd(), "config.json");
 
-function readConfig(): { deleteRequestsOlderThanDays: number; adminEmails?: string[] } {
+function readConfig(): { deleteRequestsOlderThanDays: number; adminEmails?: string[]; timezone?: string } {
   try {
     return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
   } catch {
@@ -220,11 +220,24 @@ export async function DELETE(request: Request) {
   return NextResponse.json({ ok: true });
 }
 
+function buildRRule(r: { freq: string; endType: string; count?: number; until?: string }): string {
+  let rule = `RRULE:FREQ=${r.freq}`;
+  if (r.endType === "count" && r.count) {
+    rule += `;COUNT=${r.count}`;
+  } else if (r.endType === "date" && r.until) {
+    const until = new Date(r.until).toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";
+    rule += `;UNTIL=${until}`;
+  }
+  return rule;
+}
+
 export async function PATCH(request: Request) {
-  const { id, action, reason } = await request.json() as {
+  const { id, action, reason, override, recurrence } = await request.json() as {
     id: string;
     action: "approve" | "reject";
     reason?: string;
+    override?: { title?: string; start?: string; end?: string; description?: string };
+    recurrence?: { freq: string; endType: string; count?: number; until?: string };
   };
 
   if (!id || !["approve", "reject"].includes(action)) {
@@ -243,23 +256,29 @@ export async function PATCH(request: Request) {
     try {
       const auth = getAuth();
       const calendar = google.calendar({ version: "v3", auth });
+      const title = override?.title?.trim() || entry.booking.title;
+      const start = override?.start || entry.booking.start;
+      const end = override?.end || entry.booking.end;
       const guestLine = [
         entry.guest.name,
         entry.guest.email,
         entry.guest.phone,
       ].filter(Boolean).join(" · ");
       const description = [
-        entry.booking.description,
+        override?.description ?? entry.booking.description,
         `Requested by: ${guestLine}`,
       ].filter(Boolean).join("\n\n");
+      const recurrenceRules = recurrence ? [buildRRule(recurrence)] : undefined;
+      const { timezone = "Australia/Melbourne" } = readConfig();
 
       const event = await calendar.events.insert({
         calendarId: entry.booking.calendarId,
         requestBody: {
-          summary: entry.booking.title,
+          summary: title,
           description,
-          start: { dateTime: entry.booking.start },
-          end: { dateTime: entry.booking.end },
+          start: { dateTime: start, timeZone: timezone },
+          end: { dateTime: end, timeZone: timezone },
+          recurrence: recurrenceRules,
         },
       });
       bookings[index] = {

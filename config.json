@@ -1,4 +1,5 @@
 {
   "deleteRequestsOlderThanDays": 30,
-  "adminEmails": ["fred.li@nlec.org.au"]
+  "adminEmails": ["fred.li@nlec.org.au"],
+  "timezone": "Australia/Melbourne"
 }
