@@ -3,6 +3,7 @@ import { google } from "googleapis";
 import nodemailer from "nodemailer";
 import fs from "fs";
 import path from "path";
+import { supabase, rowToEntry, BookingRow } from "@/lib/supabase";
 
 function getAuth() {
   const keyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
@@ -15,8 +16,6 @@ function getAuth() {
   });
 }
 
-const FILE = path.join(process.cwd(), "data", "pending-bookings.json");
-const ARCHIVE_FILE = path.join(process.cwd(), "data", "archived-bookings.json");
 const CONFIG_FILE = path.join(process.cwd(), "config.json");
 
 function readConfig(): { deleteRequestsOlderThanDays: number; adminEmails?: string[]; timezone?: string } {
@@ -39,9 +38,7 @@ async function sendGuestApprovedEmail(entry: {
   if (!smtpUser || !smtpPass) return;
 
   const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpPort === 465,
+    host: smtpHost, port: smtpPort, secure: smtpPort === 465,
     auth: { user: smtpUser, pass: smtpPass },
   });
 
@@ -87,9 +84,7 @@ async function sendGuestReceiptEmail(entry: {
   if (!smtpUser || !smtpPass) return;
 
   const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpPort === 465,
+    host: smtpHost, port: smtpPort, secure: smtpPort === 465,
     auth: { user: smtpUser, pass: smtpPass },
   });
 
@@ -123,44 +118,15 @@ async function sendGuestReceiptEmail(entry: {
   });
 }
 
-function readBookings() {
-  if (!fs.existsSync(FILE)) return [];
-  try {
-    return JSON.parse(fs.readFileSync(FILE, "utf-8"));
-  } catch {
-    return [];
+function buildRRule(r: { freq: string; endType: string; count?: number; until?: string }): string {
+  let rule = `RRULE:FREQ=${r.freq}`;
+  if (r.endType === "count" && r.count) {
+    rule += `;COUNT=${r.count}`;
+  } else if (r.endType === "date" && r.until) {
+    const until = new Date(r.until).toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";
+    rule += `;UNTIL=${until}`;
   }
-}
-
-function writeBookings(bookings: unknown[]) {
-  fs.mkdirSync(path.dirname(FILE), { recursive: true });
-  fs.writeFileSync(FILE, JSON.stringify(bookings, null, 2), "utf-8");
-}
-
-function readArchive() {
-  if (!fs.existsSync(ARCHIVE_FILE)) return [];
-  try {
-    return JSON.parse(fs.readFileSync(ARCHIVE_FILE, "utf-8"));
-  } catch {
-    return [];
-  }
-}
-
-function writeArchive(entries: unknown[]) {
-  fs.mkdirSync(path.dirname(ARCHIVE_FILE), { recursive: true });
-  fs.writeFileSync(ARCHIVE_FILE, JSON.stringify(entries, null, 2), "utf-8");
-}
-
-function pruneOldRequests() {
-  const { deleteRequestsOlderThanDays } = readConfig();
-  const cutoff = Date.now() - deleteRequestsOlderThanDays * 24 * 60 * 60 * 1000;
-  const bookings = readBookings();
-  const kept = bookings.filter((b: { status: string; approvedAt?: string; rejectedAt?: string; submittedAt: string }) => {
-    if (b.status === "pending") return true; // never auto-delete pending
-    const actionDate = b.approvedAt ?? b.rejectedAt ?? b.submittedAt;
-    return new Date(actionDate).getTime() > cutoff;
-  });
-  if (kept.length !== bookings.length) writeBookings(kept);
+  return rule;
 }
 
 export async function POST(request: Request) {
@@ -174,29 +140,54 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing guest details" }, { status: 400 });
   }
 
-  const entry = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const submittedAt = new Date().toISOString();
+
+  const { error } = await supabase.from("bookings").insert({
+    id,
     status: "pending",
-    submittedAt: new Date().toISOString(),
-    booking,
-    guest,
-  };
+    submitted_at: submittedAt,
+    room: booking.room,
+    calendar_id: booking.calendarId,
+    title: booking.title,
+    description: booking.description ?? null,
+    start_time: booking.start,
+    end_time: booking.end,
+    guest_name: guest.name,
+    guest_email: guest.email,
+    guest_phone: guest.phone ?? null,
+  });
 
-  const bookings = readBookings();
-  bookings.push(entry);
-  writeBookings(bookings);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Send receipt email to guest (non-blocking)
-  sendGuestReceiptEmail(entry).catch((e) =>
+  sendGuestReceiptEmail({ booking, guest }).catch((e) =>
     console.error("Guest receipt email failed:", e)
   );
 
-  return NextResponse.json({ ok: true, id: entry.id });
+  return NextResponse.json({ ok: true, id });
 }
 
 export async function GET() {
-  pruneOldRequests();
-  return NextResponse.json({ bookings: readBookings() });
+  const { deleteRequestsOlderThanDays } = readConfig();
+  const cutoff = new Date(Date.now() - deleteRequestsOlderThanDays * 24 * 60 * 60 * 1000).toISOString();
+
+  // Prune old non-pending bookings
+  await supabase
+    .from("bookings")
+    .delete()
+    .neq("status", "pending")
+    .lt("submitted_at", cutoff)
+    .is("archived_at", null);
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .is("archived_at", null)
+    .order("submitted_at", { ascending: true });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ bookings: (data as BookingRow[]).map(rowToEntry) });
 }
 
 export async function DELETE(request: Request) {
@@ -204,31 +195,24 @@ export async function DELETE(request: Request) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  const bookings = readBookings();
-  const entry = bookings.find((b: { id: string }) => b.id === id);
-  if (!entry) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
-  if (entry.status === "pending") {
+  const { data: rows } = await supabase
+    .from("bookings")
+    .select("status")
+    .eq("id", id)
+    .single();
+
+  if (!rows) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+  if (rows.status === "pending") {
     return NextResponse.json({ error: "Cannot remove a pending request" }, { status: 400 });
   }
 
-  // Move to archive instead of hard-deleting
-  const archive = readArchive();
-  archive.push({ ...entry, archivedAt: new Date().toISOString() });
-  writeArchive(archive);
+  const { error } = await supabase
+    .from("bookings")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", id);
 
-  writeBookings(bookings.filter((b: { id: string }) => b.id !== id));
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
-}
-
-function buildRRule(r: { freq: string; endType: string; count?: number; until?: string }): string {
-  let rule = `RRULE:FREQ=${r.freq}`;
-  if (r.endType === "count" && r.count) {
-    rule += `;COUNT=${r.count}`;
-  } else if (r.endType === "date" && r.until) {
-    const until = new Date(r.until).toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";
-    rule += `;UNTIL=${until}`;
-  }
-  return rule;
 }
 
 export async function PATCH(request: Request) {
@@ -244,13 +228,15 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const bookings = readBookings();
-  const index = bookings.findIndex((b: { id: string }) => b.id === id);
-  if (index === -1) {
-    return NextResponse.json({ error: "Booking not found" }, { status: 404 });
-  }
+  const { data: row } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("id", id)
+    .single();
 
-  const entry = bookings[index];
+  if (!row) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+
+  const entry = rowToEntry(row as BookingRow);
 
   if (action === "approve") {
     try {
@@ -259,11 +245,8 @@ export async function PATCH(request: Request) {
       const title = override?.title?.trim() || entry.booking.title;
       const start = override?.start || entry.booking.start;
       const end = override?.end || entry.booking.end;
-      const guestLine = [
-        entry.guest.name,
-        entry.guest.email,
-        entry.guest.phone,
-      ].filter(Boolean).join(" · ");
+      const guestLine = [entry.guest.name, entry.guest.email, entry.guest.phone]
+        .filter(Boolean).join(" · ");
       const description = [
         override?.description ?? entry.booking.description,
         `Requested by: ${guestLine}`,
@@ -281,29 +264,30 @@ export async function PATCH(request: Request) {
           recurrence: recurrenceRules,
         },
       });
-      bookings[index] = {
-        ...entry,
+
+      await supabase.from("bookings").update({
         status: "approved",
-        approvedAt: new Date().toISOString(),
-        googleEventId: event.data.id,
-      };
-      // Send confirmation email to guest (non-blocking)
-      sendGuestApprovedEmail(entry).catch((e) =>
-        console.error("Guest approval email failed:", e)
-      );
+        approved_at: new Date().toISOString(),
+        google_event_id: event.data.id,
+        title,
+        start_time: start,
+        end_time: end,
+        description: override?.description ?? entry.booking.description ?? null,
+      }).eq("id", id);
+
+      sendGuestApprovedEmail({ ...entry, booking: { ...entry.booking, title, start, end } })
+        .catch((e) => console.error("Guest approval email failed:", e));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create calendar event";
       return NextResponse.json({ error: message }, { status: 500 });
     }
   } else {
-    bookings[index] = {
-      ...entry,
+    await supabase.from("bookings").update({
       status: "rejected",
-      rejectedAt: new Date().toISOString(),
-      rejectReason: reason ?? "",
-    };
+      rejected_at: new Date().toISOString(),
+      reject_reason: reason ?? "",
+    }).eq("id", id);
   }
 
-  writeBookings(bookings);
   return NextResponse.json({ ok: true });
 }

@@ -6,6 +6,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     MicrosoftEntraID({
       clientId: process.env.AUTH_MICROSOFT_CLIENT_ID!,
       clientSecret: process.env.AUTH_MICROSOFT_CLIENT_SECRET!,
+      // @ts-expect-error -- tenantId is valid but missing from next-auth beta types
       tenantId: process.env.AUTH_MICROSOFT_TENANT_ID!,
       issuer: `https://login.microsoftonline.com/${process.env.AUTH_MICROSOFT_TENANT_ID}/v2.0`,
       authorization: {
@@ -26,10 +27,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     async jwt({ token, profile }) {
       if (profile) {
-        token.email =
-          (profile as Record<string, unknown>).email ??
-          (profile as Record<string, unknown>).preferred_username ??
-          token.email;
+        const p = profile as Record<string, unknown>;
+        const email = (p.email ?? p.preferred_username ?? token.email) as string | null | undefined;
+        if (email) token.email = email;
       }
       return token;
     },
