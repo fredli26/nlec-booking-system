@@ -200,7 +200,7 @@ Same variables must be added to **Vercel → Settings → Environment Variables*
 
 ---
 
-## Dev / Staging / Production Setup (in progress as of 2026-06-29)
+## Dev / Staging / Production Setup (completed 2026-06-29)
 
 ### Environment map
 | Environment | Branch | Vercel | Supabase |
@@ -214,20 +214,16 @@ Same variables must be added to **Vercel → Settings → Environment Variables*
 - **Staging**: new project created 2026-06-29 — tables + seed SQL run ✅
 - SQL to run on each is in `SUPABASE_SETUP.md`
 
-### Completed so far
-- [x] Both Supabase projects created and SQL run on both
-- [x] Credentials (URL + service_role key) obtained for both projects
-
-### Still to do
-- [ ] Update `v5/.env.local` — set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to **staging** values
-- [ ] Vercel → Settings → Environment Variables:
-  - Add `SUPABASE_URL` twice: production value (Production env), staging value (Preview env)
-  - Add `SUPABASE_SERVICE_ROLE_KEY` twice: production value (Production env), staging value (Preview env)
-  - Add all other env vars (Google Calendar, SSO, Email) — same value for both environments
-- [ ] Verify Vercel root directory is set to `v5`
-- [ ] Set `NEXTAUTH_URL` in Vercel to the correct production and preview URLs
-- [ ] Test: push to `develop` → confirm Vercel preview deploys and hits staging Supabase
-- [ ] Test: merge to `main` → confirm Vercel production deploys and hits production Supabase
+### All completed ✅
+- [x] Both Supabase projects created (AU region) and SQL run on both
+- [x] Vercel project created under NLEC IT account
+- [x] GitHub repo connected (nlec-it/nlec-booking-system)
+- [x] All environment variables set in Vercel (Supabase split by environment)
+- [x] Custom domain `booking.nlec.org.au` configured via Cloudflare auto-configure
+- [x] NEXTAUTH_URL set to `https://booking.nlec.org.au`
+- [x] Azure redirect URI added for `booking.nlec.org.au`
+- [x] Microsoft SSO working on live site
+- [x] Room schedule loading correctly on production
 
 ### All required env vars (for Vercel + .env.local)
 ```
