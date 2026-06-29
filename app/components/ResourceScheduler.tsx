@@ -53,7 +53,7 @@ const ZOOM_OPTIONS = [
   { label: "2 hours",        slotDuration: "00:05:00", slotLabelInterval: "00:30", slotMinWidth: 80, slotMinTime: "00:00:00", slotMaxTime: "24:00:00" },
 ];
 
-export default function ResourceScheduler({ role }: { role: "admin" | "viewer" | "guest" }) {
+export default function ResourceScheduler({ role, isAuthenticated }: { role: "admin" | "viewer" | "guest"; isAuthenticated: boolean }) {
   const isAdmin = role === "admin";
   const isGuest = role === "guest";
   const canBook = isAdmin || isGuest;
@@ -138,7 +138,7 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
     try {
       const [calRes, pendingRes] = await Promise.all([
         fetch(`/api/calendars?start=${start.toISOString()}&end=${end.toISOString()}`),
-        fetch("/api/bookings"),
+        fetch("/api/bookings").catch(() => null),
       ]);
       const text = await calRes.text();
       let json: { error?: string; resources?: []; events?: [] };
@@ -150,9 +150,11 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
       if (json.error) throw new Error(json.error);
       setData(json as CalendarData);
 
-      if (pendingRes.ok) {
-        const pj = await pendingRes.json();
-        setPendingBookings((pj.bookings ?? []) as PendingEntry[]);
+      if (pendingRes?.ok && pendingRes.headers.get("content-type")?.includes("application/json")) {
+        try {
+          const pj = await pendingRes.json();
+          setPendingBookings((pj.bookings ?? []) as PendingEntry[]);
+        } catch {}
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -359,7 +361,9 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
     setPendingActionError(null);
     try {
       const startDT = new Date(`${approveDate}T${approveStartTime}`);
-      const endDT = new Date(`${approveDate}T${approveEndTime}`);
+      let endDT = new Date(`${approveDate}T${approveEndTime}`);
+      // Handle midnight-crossing: if end ≤ start, the end is on the next day
+      if (endDT <= startDT) endDT = new Date(endDT.getTime() + 24 * 60 * 60 * 1000);
       const res = await fetch("/api/bookings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -594,27 +598,39 @@ export default function ResourceScheduler({ role }: { role: "admin" | "viewer" |
                 )}
               </Link>
             )}
-            {/* Role badge */}
-            <span
-              className="text-xs px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide"
-              style={{
-                background: isAdmin ? BRAND.teal : isGuest ? "#C28064" : "rgba(255,255,255,0.15)",
-                color: isAdmin || isGuest ? BRAND.navy : "rgba(255,255,255,0.8)",
-              }}
-            >
-              {role}
-            </span>
-            {/* Sign out — rightmost */}
-            <button
-              onClick={async () => {
-                await fetch("/api/auth/logout", { method: "POST" });
-                window.location.href = "/login";
-              }}
-              className="text-xs px-3 py-1 rounded font-medium transition-opacity hover:opacity-80"
-              style={{ background: "rgba(255,255,255,0.15)", color: "white" }}
-            >
-              Sign out
-            </button>
+            {/* Role badge — only shown when signed in */}
+            {isAuthenticated && (
+              <span
+                className="text-xs px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide"
+                style={{
+                  background: isAdmin ? BRAND.teal : isGuest ? "#C28064" : "rgba(255,255,255,0.15)",
+                  color: isAdmin || isGuest ? BRAND.navy : "rgba(255,255,255,0.8)",
+                }}
+              >
+                {role}
+              </span>
+            )}
+            {/* Sign in / Sign out — rightmost */}
+            {isAuthenticated ? (
+              <button
+                onClick={async () => {
+                  await fetch("/api/auth/logout", { method: "POST" });
+                  window.location.href = "/";
+                }}
+                className="text-xs px-3 py-1 rounded font-medium transition-opacity hover:opacity-80"
+                style={{ background: "rgba(255,255,255,0.15)", color: "white" }}
+              >
+                Sign out
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="text-xs px-3 py-1 rounded font-medium transition-opacity hover:opacity-80"
+                style={{ background: BRAND.teal, color: BRAND.navy }}
+              >
+                Sign in
+              </Link>
+            )}
           </div>
         </div>
 

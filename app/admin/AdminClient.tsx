@@ -364,7 +364,7 @@ export default function AdminClient() {
         <div className="ml-1">
           <p className="text-white text-xs uppercase tracking-wider" style={{ opacity: 0.7 }}>Admin</p>
           <h1 className="text-white font-bold text-base leading-tight">
-            {page === "bookings" ? "Booking Requests" : page === "admins" ? "Manage Admins" : "Access Codes"}
+            {page === "bookings" ? "Booking Requests" : page === "admins" ? "Accounts" : "Access Codes"}
           </h1>
         </div>
         {page === "bookings" && pending > 0 && (
@@ -388,7 +388,7 @@ export default function AdminClient() {
             className="text-xs px-3 py-1.5 rounded font-medium transition-opacity hover:opacity-80"
             style={{ background: page === "admins" ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.15)", color: "white" }}
           >
-            Manage Admins
+            Accounts
           </button>
           <button
             onClick={() => setPage("codes")}

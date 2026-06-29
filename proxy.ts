@@ -3,8 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow login page and auth API through
-  if (pathname.startsWith("/login") || pathname.startsWith("/api/auth")) {
+  // Public paths — accessible without auth
+  if (
+    pathname === "/" ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/calendars")
+  ) {
     return NextResponse.next();
   }
 

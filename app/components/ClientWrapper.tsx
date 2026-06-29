@@ -11,6 +11,6 @@ const ResourceScheduler = dynamic(() => import("./ResourceScheduler"), {
   ),
 });
 
-export default function ClientWrapper({ role }: { role: "admin" | "viewer" | "guest" }) {
-  return <ResourceScheduler role={role} />;
+export default function ClientWrapper({ role, isAuthenticated }: { role: "admin" | "viewer" | "guest"; isAuthenticated: boolean }) {
+  return <ResourceScheduler role={role} isAuthenticated={isAuthenticated} />;
 }
