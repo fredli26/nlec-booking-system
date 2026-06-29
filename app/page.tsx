@@ -5,5 +5,5 @@ export default async function Home() {
   const cookieStore = await cookies();
   const roleCookie = cookieStore.get("nlec_role")?.value;
   const role = (roleCookie ?? "viewer") as "admin" | "viewer" | "guest";
-  return <ClientWrapper role={role} isAuthenticated={!!roleCookie} />;
+  return <ClientWrapper role={role} isAuthenticated={true} />;
 }

@@ -5,10 +5,8 @@ export function proxy(request: NextRequest) {
 
   // Public paths — accessible without auth
   if (
-    pathname === "/" ||
     pathname.startsWith("/login") ||
-    pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/api/calendars")
+    pathname.startsWith("/api/auth")
   ) {
     return NextResponse.next();
   }
