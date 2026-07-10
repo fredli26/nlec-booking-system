@@ -18,7 +18,7 @@ function getAuth() {
 
 const CONFIG_FILE = path.join(process.cwd(), "config.json");
 
-function readConfig(): { deleteRequestsOlderThanDays: number; adminEmails?: string[]; timezone?: string } {
+function readConfig(): { deleteRequestsOlderThanDays: number; timezone?: string } {
   try {
     return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
   } catch {
@@ -26,11 +26,19 @@ function readConfig(): { deleteRequestsOlderThanDays: number; adminEmails?: stri
   }
 }
 
+async function getAdminBcc(field: "receives_confirmation_email" | "receives_booking_request_email"): Promise<string> {
+  const { data } = await supabase
+    .from("admins")
+    .select("email")
+    .eq(field, true);
+  return (data ?? []).map((r) => r.email).join(", ");
+}
+
 async function sendGuestApprovedEmail(entry: {
   booking: { title: string; room: string; start: string; end: string; description?: string };
   guest: { name: string; email: string; phone?: string };
 }) {
-  const { adminEmails } = readConfig();
+  const bcc = await getAdminBcc("receives_confirmation_email");
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
   const smtpHost = process.env.SMTP_HOST ?? "smtp.gmail.com";
@@ -66,7 +74,7 @@ async function sendGuestApprovedEmail(entry: {
   await transporter.sendMail({
     from: `"NLEC Booking" <${smtpUser}>`,
     to: entry.guest.email,
-    bcc: (adminEmails ?? []).join(", "),
+    bcc: bcc || undefined,
     subject: `Booking Confirmed: ${entry.booking.room} — ${entry.booking.title}`,
     html,
   });
@@ -76,7 +84,7 @@ async function sendGuestReceiptEmail(entry: {
   booking: { title: string; room: string; start: string; end: string; description?: string };
   guest: { name: string; email: string; phone?: string };
 }) {
-  const { adminEmails } = readConfig();
+  const bcc = await getAdminBcc("receives_booking_request_email");
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
   const smtpHost = process.env.SMTP_HOST ?? "smtp.gmail.com";
@@ -112,7 +120,7 @@ async function sendGuestReceiptEmail(entry: {
   await transporter.sendMail({
     from: `"NLEC Booking" <${smtpUser}>`,
     to: entry.guest.email,
-    bcc: (adminEmails ?? []).join(", "),
+    bcc: bcc || undefined,
     subject: `Booking Request Received: ${entry.booking.room} — ${entry.booking.title}`,
     html,
   });
