@@ -26,6 +26,10 @@
   --font-sans: var(--font-montserrat), Montserrat, sans-serif;
 }
 
+html {
+  font-size: 112.5%; /* bump base from 16px → 18px (one Tailwind step larger) */
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -60,4 +64,11 @@ body {
   background: var(--nlec-teal-light);
   color: var(--nlec-teal-dark);
   font-weight: 600;
+}
+/* Prevent room name truncation in the resource column */
+.fc .fc-datagrid-cell-cushion {
+  white-space: normal;
+  overflow-wrap: break-word;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }

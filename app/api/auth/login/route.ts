@@ -14,8 +14,7 @@ export async function POST(request: Request) {
   const viewerCode = data?.viewer_code ?? "viewer";
 
   let role: string | null = null;
-  if (password === "admin") role = "admin";
-  else if (password === viewerCode) role = "viewer";
+  if (password === viewerCode) role = "viewer";
   else if (password === guestCode) role = "guest";
 
   if (!role) {
