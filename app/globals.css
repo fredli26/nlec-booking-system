@@ -65,3 +65,10 @@ body {
   color: var(--nlec-teal-dark);
   font-weight: 600;
 }
+/* Prevent room name truncation in the resource column */
+.fc .fc-datagrid-cell-cushion {
+  white-space: normal;
+  overflow-wrap: break-word;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}

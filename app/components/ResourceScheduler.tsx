@@ -736,7 +736,7 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
             events={[...filteredEvents, ...pendingEvents] as never[]}
             schedulerLicenseKey="CC-Attribution-NonCommercial-NoDerivatives"
             resourceOrder="title"
-            resourceAreaWidth="160px"
+            resourceAreaWidth="220px"
             resourceAreaHeaderContent="Room"
             nowIndicator={true}
             eventTimeFormat={{ hour: "numeric", minute: "2-digit", meridiem: "short" }}
