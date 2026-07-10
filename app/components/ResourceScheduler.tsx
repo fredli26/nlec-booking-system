@@ -739,6 +739,12 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
             resourceAreaWidth="220px"
             resourceAreaHeaderContent="Room"
             nowIndicator={true}
+            scrollTime={(() => {
+              const now = new Date();
+              const h = Math.max(0, now.getHours() - 1);
+              const m = now.getMinutes();
+              return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+            })()}
             eventTimeFormat={{ hour: "numeric", minute: "2-digit", meridiem: "short" }}
             slotLabelClassNames="text-xs"
             selectable={canBook}
