@@ -101,7 +101,7 @@ export default function AdminClient() {
   });
 
   // Manage admins state
-  const [admins, setAdmins] = useState<{ email: string; addedAt: string }[]>([]);
+  const [admins, setAdmins] = useState<{ email: string; addedAt: string; receivesConfirmationEmail: boolean; receivesBookingRequestEmail: boolean }[]>([]);
   const [adminsLoading, setAdminsLoading] = useState(false);
   const [newAdminEmail, setNewAdminEmail] = useState("");
   const [adminAddError, setAdminAddError] = useState("");
@@ -215,6 +215,18 @@ export default function AdminClient() {
     } finally {
       setAdminAddLoading(false);
     }
+  };
+
+  const patchAdmin = async (email: string, field: "receives_confirmation_email" | "receives_booking_request_email", value: boolean) => {
+    try {
+      const res = await fetch("/api/admin-list", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, field, value }),
+      });
+      const json = await res.json();
+      if (res.ok) setAdmins(json.admins);
+    } catch {}
   };
 
   const removeAdmin = async (email: string) => {
@@ -454,24 +466,45 @@ export default function AdminClient() {
           ) : (
             <div className="flex flex-col gap-2">
               {admins.map((a) => (
-                <div
-                  key={a.email}
-                  className="flex items-center justify-between gap-3 bg-white rounded-xl px-4 py-3 shadow-sm"
-                >
-                  <div>
-                    <p className="text-sm font-medium" style={{ color: BRAND.navy }}>{a.email}</p>
-                    <p className="text-xs mt-0.5" style={{ color: BRAND.grey }}>
-                      Added {new Date(a.addedAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}
-                    </p>
+                <div key={a.email} className="bg-white rounded-xl px-4 py-3 shadow-sm">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: BRAND.navy }}>{a.email}</p>
+                      <p className="text-xs mt-0.5" style={{ color: BRAND.grey }}>
+                        Added {new Date(a.addedAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => removeAdmin(a.email)}
+                      disabled={adminDeleteLoading === a.email}
+                      className="text-xs px-3 py-1.5 rounded-lg font-medium border transition-opacity hover:opacity-80 disabled:opacity-40 flex-shrink-0"
+                      style={{ borderColor: "#fca5a5", color: "#dc2626", background: "#fff5f5" }}
+                    >
+                      {adminDeleteLoading === a.email ? "Removing…" : "Remove"}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => removeAdmin(a.email)}
-                    disabled={adminDeleteLoading === a.email}
-                    className="text-xs px-3 py-1.5 rounded-lg font-medium border transition-opacity hover:opacity-80 disabled:opacity-40"
-                    style={{ borderColor: "#fca5a5", color: "#dc2626", background: "#fff5f5" }}
-                  >
-                    {adminDeleteLoading === a.email ? "Removing…" : "Remove"}
-                  </button>
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t" style={{ borderColor: "#f0fafa" }}>
+                    <label className="flex items-center gap-2 cursor-pointer text-xs" style={{ color: BRAND.grey }}>
+                      <input
+                        type="checkbox"
+                        checked={a.receivesBookingRequestEmail}
+                        onChange={(e) => patchAdmin(a.email, "receives_booking_request_email", e.target.checked)}
+                        className="w-3.5 h-3.5"
+                        style={{ accentColor: BRAND.tealDark }}
+                      />
+                      Request emails
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-xs" style={{ color: BRAND.grey }}>
+                      <input
+                        type="checkbox"
+                        checked={a.receivesConfirmationEmail}
+                        onChange={(e) => patchAdmin(a.email, "receives_confirmation_email", e.target.checked)}
+                        className="w-3.5 h-3.5"
+                        style={{ accentColor: BRAND.tealDark }}
+                      />
+                      Confirmation emails
+                    </label>
+                  </div>
                 </div>
               ))}
             </div>

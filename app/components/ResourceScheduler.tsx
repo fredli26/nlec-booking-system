@@ -709,12 +709,13 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
             selectAllow={(span) => {
               if (!canBook || span.start < new Date()) return false;
               if (!span.resource) return true;
+              if (isAdmin) return true;
               return !checkOverlap(span.resource.id, span.start, span.end);
             }}
             select={(info) => {
               const resource = info.resource;
               if (!resource) return;
-              if (checkOverlap(resource.id, info.start, info.end)) {
+              if (!isAdmin && checkOverlap(resource.id, info.start, info.end)) {
                 setOverlapError("This time slot overlaps with an existing booking. Please choose a different time.");
                 setTimeout(() => setOverlapError(null), 4000);
                 return;
@@ -759,6 +760,14 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
               });
             }}
           />
+        </div>
+
+        {/* Footer */}
+        <div
+          className="flex-shrink-0 text-center py-2 text-xs"
+          style={{ background: BRAND.navy, color: "rgba(255,255,255,0.55)" }}
+        >
+          Please contact NLEC Office admin if any issue.
         </div>
       </div>
 
