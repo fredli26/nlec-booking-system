@@ -61,6 +61,7 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
   const [date, setDate] = useState(localISODate);
   const [zoomIndex, setZoomIndex] = useState(0);
   const [filter, setFilter] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [data, setData] = useState<CalendarData>({ resources: [], events: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -434,86 +435,113 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
     <div className="flex h-screen overflow-hidden" style={{ fontFamily: "var(--font-montserrat), Montserrat, sans-serif" }}>
 
       {/* ── Left sidebar ── */}
-      <div className="w-56 flex flex-col border-r" style={{ borderColor: BRAND.tealLight }}>
-
+      <div
+        className="flex flex-col border-r flex-shrink-0 overflow-hidden"
+        style={{
+          width: sidebarOpen ? 224 : 36,
+          transition: "width 0.2s ease",
+          borderColor: BRAND.tealLight,
+        }}
+      >
         {/* Sidebar header */}
         <div
-          className="px-4 py-3 flex items-center gap-2"
-          style={{ background: BRAND.navy }}
+          className="flex items-center flex-shrink-0"
+          style={{ background: BRAND.navy, minHeight: 44 }}
         >
-          <span className="text-white font-semibold tracking-wide text-sm uppercase">Rooms</span>
+          {sidebarOpen && (
+            <span className="pl-4 flex-1 text-white font-semibold tracking-wide text-sm uppercase truncate">
+              Rooms
+            </span>
+          )}
+          <button
+            onClick={() => setSidebarOpen(v => !v)}
+            title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            className="flex items-center justify-center flex-shrink-0 transition-opacity hover:opacity-70"
+            style={{ width: 36, height: 44, color: "rgba(255,255,255,0.7)" }}
+          >
+            <svg viewBox="0 0 16 16" fill="none" style={{ width: 14, height: 14 }}>
+              <path
+                d={sidebarOpen ? "M10 3L5 8l5 5" : "M6 3l5 5-5 5"}
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
         </div>
 
-        {/* Filter input + select/deselect */}
-        <div className="px-3 py-2 flex flex-col gap-1.5" style={{ background: BRAND.tealLight }}>
-          <input
-            type="text"
-            placeholder="Filter rooms…"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="w-full text-xs rounded px-2 py-1 outline-none border"
-            style={{ borderColor: BRAND.teal, color: BRAND.grey, fontFamily: "inherit" }}
-          />
-          <div className="flex gap-1">
-            <button
-              onClick={selectAll}
-              className="flex-1 text-xs rounded py-0.5 font-medium transition-opacity hover:opacity-80"
-              style={{ background: BRAND.teal, color: BRAND.navy }}
-            >
-              Select All
-            </button>
-            <button
-              onClick={deselectAll}
-              className="flex-1 text-xs rounded py-0.5 font-medium transition-opacity hover:opacity-80"
-              style={{ background: "white", color: BRAND.grey, border: `1px solid ${BRAND.teal}` }}
-            >
-              Deselect All
-            </button>
-          </div>
-        </div>
-
-        {/* Room list */}
-        <div className="overflow-y-auto flex-1 bg-white">
-          {sidebarResources.map((r) => {
-            const hidden = hiddenResources.has(r.id);
-            const color = r.color ?? BRAND.teal;
-            return (
-              <div
-                key={r.id}
-                onClick={() => toggleResource(r.id)}
-                className="flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors"
-                style={{
-                  borderLeft: `3px solid ${hidden ? "transparent" : color}`,
-                  backgroundColor: hidden ? "white" : color + "12",
-                }}
+        {sidebarOpen && (<>
+          {/* Filter input + select/deselect */}
+          <div className="px-3 py-2 flex flex-col gap-1.5" style={{ background: BRAND.tealLight }}>
+            <input
+              type="text"
+              placeholder="Filter rooms…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="w-full text-xs rounded px-2 py-1 outline-none border"
+              style={{ borderColor: BRAND.teal, color: BRAND.grey, fontFamily: "inherit" }}
+            />
+            <div className="flex gap-1">
+              <button
+                onClick={selectAll}
+                className="flex-1 text-xs rounded py-0.5 font-medium transition-opacity hover:opacity-80"
+                style={{ background: BRAND.teal, color: BRAND.navy }}
               >
-                {/* Checkbox */}
+                Select All
+              </button>
+              <button
+                onClick={deselectAll}
+                className="flex-1 text-xs rounded py-0.5 font-medium transition-opacity hover:opacity-80"
+                style={{ background: "white", color: BRAND.grey, border: `1px solid ${BRAND.teal}` }}
+              >
+                Deselect All
+              </button>
+            </div>
+          </div>
+
+          {/* Room list */}
+          <div className="overflow-y-auto flex-1 bg-white">
+            {sidebarResources.map((r) => {
+              const hidden = hiddenResources.has(r.id);
+              const color = r.color ?? BRAND.teal;
+              return (
                 <div
-                  className="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors"
+                  key={r.id}
+                  onClick={() => toggleResource(r.id)}
+                  className="flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors"
                   style={{
-                    borderColor: color,
-                    backgroundColor: hidden ? "transparent" : color,
+                    borderLeft: `3px solid ${hidden ? "transparent" : color}`,
+                    backgroundColor: hidden ? "white" : color + "12",
                   }}
                 >
-                  {!hidden && (
-                    <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none">
-                      <path d="M1.5 5l2.5 2.5 4.5-4" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
+                  <div
+                    className="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors"
+                    style={{
+                      borderColor: color,
+                      backgroundColor: hidden ? "transparent" : color,
+                    }}
+                  >
+                    {!hidden && (
+                      <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none">
+                        <path d="M1.5 5l2.5 2.5 4.5-4" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </div>
+                  <span
+                    className="text-xs truncate"
+                    style={{ color: hidden ? BRAND.grey : BRAND.navy, fontWeight: hidden ? 400 : 500 }}
+                  >
+                    {r.title}
+                  </span>
                 </div>
-                <span
-                  className="text-xs truncate"
-                  style={{ color: hidden ? BRAND.grey : BRAND.navy, fontWeight: hidden ? 400 : 500 }}
-                >
-                  {r.title}
-                </span>
-              </div>
-            );
-          })}
-          {sidebarResources.length === 0 && !loading && (
-            <p className="text-xs px-3 py-4" style={{ color: BRAND.grey }}>No rooms found</p>
-          )}
-        </div>
+              );
+            })}
+            {sidebarResources.length === 0 && !loading && (
+              <p className="text-xs px-3 py-4" style={{ color: BRAND.grey }}>No rooms found</p>
+            )}
+          </div>
+        </>)}
 
       </div>
 
