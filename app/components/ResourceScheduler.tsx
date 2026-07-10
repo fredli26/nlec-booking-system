@@ -804,7 +804,7 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
           className="flex-shrink-0 text-center py-2 text-xs font-bold"
           style={{ background: BRAND.navy, color: "rgba(255,255,255,0.85)" }}
         >
-          For any issues, please contact the NLEC Office Admin at 0400 984 844.
+          For any issues, please contact Fanny Liu (NLEC Office Admin) at 0400 984 844.
         </div>
       </div>
 
