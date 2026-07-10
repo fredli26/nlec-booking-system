@@ -801,10 +801,10 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
 
         {/* Footer */}
         <div
-          className="flex-shrink-0 text-center py-2 text-xs"
-          style={{ background: BRAND.navy, color: "rgba(255,255,255,0.55)" }}
+          className="flex-shrink-0 text-center py-2 text-xs font-bold"
+          style={{ background: BRAND.navy, color: "rgba(255,255,255,0.85)" }}
         >
-          Please contact NLEC Office admin if any issue.
+          For any issues, please contact the NLEC Office Admin at 0400 984 844.
         </div>
       </div>
 
