@@ -175,6 +175,11 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
     fetchData(date);
   }, [date, fetchData]);
 
+  // After the sidebar slide transition (200ms), tell FullCalendar to recalculate its width
+  useEffect(() => {
+    const t = setTimeout(() => calendarRef.current?.getApi().updateSize(), 220);
+    return () => clearTimeout(t);
+  }, [sidebarOpen]);
 
   // Keep a fast-access ref of all events for overlap checking during drag
   useEffect(() => {
