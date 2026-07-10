@@ -74,6 +74,7 @@ async function sendGuestApprovedEmail(entry: {
   await transporter.sendMail({
     from: `"NLEC Booking" <${smtpUser}>`,
     to: entry.guest.email,
+    cc: smtpUser,
     bcc: bcc || undefined,
     subject: `Booking Confirmed: ${entry.booking.room} — ${entry.booking.title}`,
     html,
@@ -120,6 +121,7 @@ async function sendGuestReceiptEmail(entry: {
   await transporter.sendMail({
     from: `"NLEC Booking" <${smtpUser}>`,
     to: entry.guest.email,
+    cc: smtpUser,
     bcc: bcc || undefined,
     subject: `Booking Request Received: ${entry.booking.room} — ${entry.booking.title}`,
     html,
