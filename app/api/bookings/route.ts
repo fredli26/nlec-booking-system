@@ -97,7 +97,7 @@ async function sendGuestReceiptEmail(entry: {
   const html = `
     <h2 style="color:#088a97">Booking Request Received</h2>
     <p style="font-family:sans-serif;font-size:14px">Hi ${entry.guest.name},</p>
-    <p style="font-family:sans-serif;font-size:14px">Your booking request has been received and is pending approval. We will notify you once it has been reviewed.</p>
+    <p style="font-family:sans-serif;font-size:14px">Your booking request has been received and is pending approval. We will notify you once it has been reviewed. We will also contact you if there are any issues with your request.</p>
     <table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;margin-top:16px">
       <tr><td style="padding:4px 12px 4px 0;color:#768081">Room</td><td><strong>${entry.booking.room}</strong></td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#768081">Title</td><td>${entry.booking.title}</td></tr>
