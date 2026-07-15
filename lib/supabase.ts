@@ -26,14 +26,26 @@ export interface BookingRow {
   archived_at: string | null;
 }
 
+// Supabase may return TIMESTAMPTZ as "2026-06-25 23:00:00+00" (PostgreSQL format).
+// Normalise to a proper ISO 8601 string so the browser and FullCalendar parse it correctly.
+function toISO(ts: string | null | undefined): string {
+  if (!ts) return "";
+  const s = ts.trim().replace(" ", "T"); // replace space separator with T
+  try {
+    return new Date(s).toISOString();
+  } catch {
+    return s;
+  }
+}
+
 // Convert flat DB row → nested shape the UI expects
 export function rowToEntry(r: BookingRow) {
   return {
     id: r.id,
     status: r.status,
-    submittedAt: r.submitted_at,
-    approvedAt: r.approved_at ?? undefined,
-    rejectedAt: r.rejected_at ?? undefined,
+    submittedAt: toISO(r.submitted_at),
+    approvedAt: r.approved_at ? toISO(r.approved_at) : undefined,
+    rejectedAt: r.rejected_at ? toISO(r.rejected_at) : undefined,
     rejectReason: r.reject_reason ?? undefined,
     googleEventId: r.google_event_id ?? undefined,
     booking: {
@@ -41,8 +53,8 @@ export function rowToEntry(r: BookingRow) {
       calendarId: r.calendar_id ?? "",
       title: r.title ?? "",
       description: r.description ?? "",
-      start: r.start_time ?? "",
-      end: r.end_time ?? "",
+      start: toISO(r.start_time),
+      end: toISO(r.end_time),
     },
     guest: {
       name: r.guest_name ?? "",

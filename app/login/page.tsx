@@ -4,11 +4,9 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 
-type Mode = "choose" | "sso" | "code";
-
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("choose");
+  const [mode, setMode] = useState<"choose" | "code">("choose");
 
   // Access code state
   const [code, setCode] = useState("");
@@ -17,15 +15,31 @@ export default function LoginPage() {
 
   const [ssoLoading, setSsoLoading] = useState(false);
   const [ssoError, setSsoError] = useState("");
-  const [ssoLocked, setSsoLocked] = useState(false); // true = was SSO user, must re-authenticate via SSO
+  const [ssoLocked, setSsoLocked] = useState(false);
 
+  // If user previously signed in via SSO, auto-trigger SSO immediately
   useEffect(() => {
     const hasSso = document.cookie.split("; ").some((c) => c.startsWith("nlec_sso_email="));
     if (hasSso) {
-      setMode("sso");
       setSsoLocked(true);
+      setSsoLoading(true);
+      signIn("microsoft-entra-id", { callbackUrl: "/api/auth/sso-bridge" }, { prompt: "login" }).catch(() => {
+        setSsoError("Sign in failed. Please try again.");
+        setSsoLoading(false);
+      });
     }
   }, []);
+
+  const handleSsoLogin = async () => {
+    setSsoLoading(true);
+    setSsoError("");
+    try {
+      await signIn("microsoft-entra-id", { callbackUrl: "/api/auth/sso-bridge" }, { prompt: "login" });
+    } catch {
+      setSsoError("Sign in failed. Please try again.");
+      setSsoLoading(false);
+    }
+  };
 
   const handleCodeLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,17 +59,6 @@ export default function LoginPage() {
       setCodeError("Invalid access code. Please try again.");
     } finally {
       setCodeLoading(false);
-    }
-  };
-
-  const handleSsoLogin = async () => {
-    setSsoLoading(true);
-    setSsoError("");
-    try {
-      await signIn("microsoft-entra-id", { callbackUrl: "/api/auth/sso-bridge" });
-    } catch {
-      setSsoError("Sign in failed. Please try again.");
-      setSsoLoading(false);
     }
   };
 
@@ -79,17 +82,62 @@ export default function LoginPage() {
             NLEC Room Booking System
           </h2>
 
-          {/* ── Choose mode ── */}
-          {mode === "choose" && (
-            <div className="flex flex-col gap-3">
+          {/* Redirecting to Microsoft overlay */}
+          {ssoLoading && (
+            <div className="flex flex-col items-center gap-4 py-4">
+              <svg className="animate-spin w-8 h-8" viewBox="0 0 24 24" fill="none" style={{ color: "#088a97" }}>
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              <p className="text-sm text-center font-medium" style={{ color: "#003462", fontFamily: "Montserrat, sans-serif" }}>
+                Redirecting to Microsoft…
+              </p>
+              <p className="text-xs text-center" style={{ color: "#768081", fontFamily: "Montserrat, sans-serif" }}>
+                Sign in with your <strong>@nlec.org.au</strong> account
+              </p>
+            </div>
+          )}
+
+          {/* SSO error — show retry */}
+          {!ssoLoading && ssoError && (
+            <div className="flex flex-col gap-3 mb-4">
+              <p className="text-xs text-red-500 text-center bg-red-50 rounded-lg py-2 px-3">{ssoError}</p>
               <button
-                onClick={() => setMode("sso")}
+                onClick={handleSsoLogin}
                 className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
                 style={{ background: "#003462", fontFamily: "Montserrat, sans-serif" }}
               >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
+                <svg className="w-4 h-4" viewBox="0 0 23 23" fill="none">
+                  <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+                  <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
+                  <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
+                  <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
+                </svg>
+                Retry Sign in with Microsoft
+              </button>
+              {ssoLocked && (
+                <button type="button" onClick={() => { setSsoLocked(false); setSsoError(""); setMode("code"); }}
+                  className="text-xs text-center transition-opacity hover:opacity-50"
+                  style={{ color: "#c4c9ca", fontFamily: "Montserrat, sans-serif" }}>
+                  Use access code instead
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── Choose mode ── */}
+          {!ssoLoading && !ssoError && mode === "choose" && (
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleSsoLogin}
+                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                style={{ background: "#003462", fontFamily: "Montserrat, sans-serif" }}
+              >
+                <svg className="w-4 h-4" viewBox="0 0 23 23" fill="none">
+                  <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+                  <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
+                  <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
+                  <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
                 </svg>
                 Sign in with NLEC Email
               </button>
@@ -114,62 +162,8 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* ── SSO ── */}
-          {mode === "sso" && (
-            <div className="flex flex-col gap-4">
-              <p className="text-sm text-center" style={{ color: "#768081", fontFamily: "Montserrat, sans-serif" }}>
-                You will be redirected to Microsoft to sign in with your <strong>@nlec.org.au</strong> account.
-              </p>
-
-              {ssoError && (
-                <p className="text-xs text-red-500 text-center bg-red-50 rounded-lg py-2 px-3">{ssoError}</p>
-              )}
-
-              <button
-                onClick={handleSsoLogin}
-                disabled={ssoLoading}
-                className="w-full py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
-                style={{ background: "#003462", fontFamily: "Montserrat, sans-serif" }}
-              >
-                {ssoLoading ? (
-                  <>
-                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.3" />
-                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                    </svg>
-                    Redirecting…
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" viewBox="0 0 23 23" fill="none">
-                      <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
-                      <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
-                      <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
-                      <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
-                    </svg>
-                    Sign in with Microsoft
-                  </>
-                )}
-              </button>
-
-              {ssoLocked ? (
-                <button type="button" onClick={() => { setMode("code"); setSsoLocked(false); setSsoError(""); }}
-                  className="text-xs text-center transition-opacity hover:opacity-50"
-                  style={{ color: "#c4c9ca", fontFamily: "Montserrat, sans-serif" }}>
-                  Use access code instead
-                </button>
-              ) : (
-                <button type="button" onClick={() => { setMode("choose"); setSsoError(""); }}
-                  className="text-xs text-center transition-opacity hover:opacity-70"
-                  style={{ color: "#768081", fontFamily: "Montserrat, sans-serif" }}>
-                  ← Back
-                </button>
-              )}
-            </div>
-          )}
-
           {/* ── Access code form ── */}
-          {mode === "code" && (
+          {!ssoLoading && mode === "code" && (
             <form onSubmit={handleCodeLogin} className="flex flex-col gap-4">
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: "#088a97", fontFamily: "Montserrat, sans-serif" }}>

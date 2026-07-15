@@ -62,6 +62,7 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
   const [zoomIndex, setZoomIndex] = useState(0);
   const [filter, setFilter] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [ssoEmail, setSsoEmail] = useState<string | null>(null);
   const [data, setData] = useState<CalendarData>({ resources: [], events: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -168,6 +169,10 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
         setDate(saved);
         localStorage.removeItem("nlec_schedule_date");
       }
+    } catch {}
+    try {
+      const match = document.cookie.split("; ").find((c) => c.startsWith("nlec_sso_email="));
+      if (match) setSsoEmail(decodeURIComponent(match.split("=")[1]));
     } catch {}
   }, []);
 
@@ -616,8 +621,20 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
             </span>
           )}
 
-          {/* Right side */}
+          {/* Right side — order: email badge, Admin Panel, Sign out */}
           <div className="ml-auto flex items-center gap-2">
+            {/* Badge: SSO → email only; access code → role label */}
+            {isAuthenticated && (
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full font-semibold tracking-wide ${ssoEmail ? "" : "uppercase"}`}
+                style={{
+                  background: isAdmin ? BRAND.teal : isGuest ? "#C28064" : "rgba(255,255,255,0.15)",
+                  color: isAdmin || isGuest ? BRAND.navy : "rgba(255,255,255,0.8)",
+                }}
+              >
+                {ssoEmail ?? role}
+              </span>
+            )}
             {isAdmin && (
               <Link
                 href="/admin"
@@ -634,18 +651,6 @@ export default function ResourceScheduler({ role, isAuthenticated }: { role: "ad
                   </span>
                 )}
               </Link>
-            )}
-            {/* Role badge — only shown when signed in */}
-            {isAuthenticated && (
-              <span
-                className="text-xs px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide"
-                style={{
-                  background: isAdmin ? BRAND.teal : isGuest ? "#C28064" : "rgba(255,255,255,0.15)",
-                  color: isAdmin || isGuest ? BRAND.navy : "rgba(255,255,255,0.8)",
-                }}
-              >
-                {role}
-              </span>
             )}
             {/* Sign in / Sign out — rightmost */}
             {isAuthenticated ? (
